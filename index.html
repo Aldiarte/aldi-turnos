@@ -486,6 +486,11 @@ Te enviaré un recordatorio el día anterior.
 
         // PANEL DE ANÁLISIS CON FIREBASE Y EXCEL
         function PanelAnalisis({ reservas, servicios, setView }) {
+            // Función para formatear números con separadores de miles
+            const formatearNumero = (num) => {
+                return new Intl.NumberFormat('es-AR').format(num);
+            };
+            
             const [registros, setRegistros] = useState([]);
             const [cargando, setCargando] = useState(true);
             const [nuevoRegistro, setNuevoRegistro] = useState({
@@ -497,16 +502,39 @@ Te enviaré un recordatorio el día anterior.
                 sucursal: 'Bahía Blanca',
                 notas: ''
             });
-            const [filtros, setFiltros] = useState({
-                fechaInicio: '',
-                fechaFin: '',
-                clienta: '',
-                servicio: '',
-                metodoPago: '',
-                sucursal: ''
-            });
+            
+            // Cargar filtros guardados de localStorage
+            const cargarFiltrosGuardados = () => {
+                try {
+                    const guardado = localStorage.getItem('filtrosAnalisis');
+                    return guardado ? JSON.parse(guardado) : {
+                        fechaInicio: '',
+                        fechaFin: '',
+                        clienta: '',
+                        servicio: '',
+                        metodoPago: '',
+                        sucursal: ''
+                    };
+                } catch {
+                    return {
+                        fechaInicio: '',
+                        fechaFin: '',
+                        clienta: '',
+                        servicio: '',
+                        metodoPago: '',
+                        sucursal: ''
+                    };
+                }
+            };
+            
+            const [filtros, setFiltros] = useState(cargarFiltrosGuardados());
             const [mostrarFormulario, setMostrarFormulario] = useState(false);
             const [vistaActual, setVistaActual] = useState('dashboard');
+            
+            // Guardar filtros automáticamente cuando cambian
+            useEffect(() => {
+                localStorage.setItem('filtrosAnalisis', JSON.stringify(filtros));
+            }, [filtros]);
             
             // Estados para el editor modal
             const [editando, setEditando] = useState(null);
@@ -630,6 +658,7 @@ Te enviaré un recordatorio el día anterior.
                             metodoPago: 'transferencia',
                             sucursal: r.sucursal.nombre,
                             notas: 'Importado desde reserva',
+                            normalizado: true, // Ya vienen normalizados desde reservas
                             fechaCreacion: new Date().toISOString()
                         });
                         importados++;
@@ -641,6 +670,129 @@ Te enviaré un recordatorio el día anterior.
                     alert(`✅ ${importados} registros importados desde reservas`);
                 } else {
                     alert('No hay nuevas reservas para importar');
+                }
+            };
+            
+            // Eliminación masiva de registros
+            const eliminarRegistrosPorEstado = (normalizado) => {
+                const aEliminar = registros.filter(r => normalizado ? r.normalizado : !r.normalizado);
+                const tipo = normalizado ? 'normalizados' : 'pendientes de normalizar';
+                
+                if (aEliminar.length === 0) {
+                    alert(`No hay registros ${tipo}`);
+                    return;
+                }
+                
+                if (confirm(`⚠️ ¿ELIMINAR TODOS LOS REGISTROS ${tipo.toUpperCase()}?\n\nSe eliminarán ${aEliminar.length} registros.\n\n¡Esta acción NO se puede deshacer!`)) {
+                    const nuevos = registros.filter(r => normalizado ? !r.normalizado : r.normalizado);
+                    guardarRegistros(nuevos);
+                    alert(`✅ ${aEliminar.length} registros eliminados`);
+                }
+            };
+            
+            const eliminarRegistrosPorRango = () => {
+                const fechaInicio = prompt('Fecha inicio (YYYY-MM-DD):');
+                if (!fechaInicio) return;
+                
+                const fechaFin = prompt('Fecha fin (YYYY-MM-DD):');
+                if (!fechaFin) return;
+                
+                const regexFecha = /^\d{4}-\d{2}-\d{2}$/;
+                if (!regexFecha.test(fechaInicio) || !regexFecha.test(fechaFin)) {
+                    alert('❌ Formato inválido. Usa YYYY-MM-DD');
+                    return;
+                }
+                
+                const aEliminar = registros.filter(r => r.fecha >= fechaInicio && r.fecha <= fechaFin);
+                
+                if (aEliminar.length === 0) {
+                    alert(`No hay registros entre ${fechaInicio} y ${fechaFin}`);
+                    return;
+                }
+                
+                if (confirm(`⚠️ ¿ELIMINAR REGISTROS?\n\nDesde: ${fechaInicio}\nHasta: ${fechaFin}\nTotal: ${aEliminar.length}\n\n¡No se puede deshacer!`)) {
+                    const nuevos = registros.filter(r => r.fecha < fechaInicio || r.fecha > fechaFin);
+                    guardarRegistros(nuevos);
+                    alert(`✅ ${aEliminar.length} registros eliminados`);
+                }
+            };
+            
+            const eliminarRegistrosAnterioresA = () => {
+                const fecha = prompt('Eliminar registros anteriores a (YYYY-MM-DD):');
+                if (!fecha) return;
+                
+                const regexFecha = /^\d{4}-\d{2}-\d{2}$/;
+                if (!regexFecha.test(fecha)) {
+                    alert('❌ Formato inválido. Usa YYYY-MM-DD');
+                    return;
+                }
+                
+                const aEliminar = registros.filter(r => r.fecha < fecha);
+                
+                if (aEliminar.length === 0) {
+                    alert(`No hay registros anteriores a ${fecha}`);
+                    return;
+                }
+                
+                if (confirm(`⚠️ ¿ELIMINAR REGISTROS ANTIGUOS?\n\nAnteriores a: ${fecha}\nTotal: ${aEliminar.length}\n\n¡No se puede deshacer!`)) {
+                    const nuevos = registros.filter(r => r.fecha >= fecha);
+                    guardarRegistros(nuevos);
+                    alert(`✅ ${aEliminar.length} registros eliminados`);
+                }
+            };
+            
+            const eliminarRegistrosFiltrados = () => {
+                if (registrosFiltrados.length === registros.length) {
+                    alert('⚠️ No hay filtros aplicados.\n\nAplicá filtros primero para eliminar registros específicos.');
+                    return;
+                }
+                
+                if (confirm(`⚠️ ¿ELIMINAR LOS ${registrosFiltrados.length} REGISTROS FILTRADOS?\n\n¡Esta acción NO se puede deshacer!`)) {
+                    const idsAEliminar = new Set(registrosFiltrados.map(r => r.id));
+                    const nuevos = registros.filter(r => !idsAEliminar.has(r.id));
+                    guardarRegistros(nuevos);
+                    alert(`✅ ${registrosFiltrados.length} registros eliminados`);
+                }
+            };
+            
+            const mostrarMenuEliminacionRegistros = () => {
+                const opciones = `Eliminación masiva de registros:
+
+1️⃣ Eliminar normalizados (${registros.filter(r => r.normalizado).length})
+2️⃣ Eliminar pendientes (${registros.filter(r => !r.normalizado).length})
+3️⃣ Eliminar por rango de fechas
+4️⃣ Eliminar anteriores a fecha
+5️⃣ Eliminar registros filtrados (${registrosFiltrados.length})
+6️⃣ Eliminar TODOS los registros
+
+Ingresá el número (1-6):`;
+                
+                const opcion = prompt(opciones);
+                
+                switch(opcion) {
+                    case '1':
+                        eliminarRegistrosPorEstado(true);
+                        break;
+                    case '2':
+                        eliminarRegistrosPorEstado(false);
+                        break;
+                    case '3':
+                        eliminarRegistrosPorRango();
+                        break;
+                    case '4':
+                        eliminarRegistrosAnterioresA();
+                        break;
+                    case '5':
+                        eliminarRegistrosFiltrados();
+                        break;
+                    case '6':
+                        if (confirm('⚠️ ¿ELIMINAR TODOS LOS REGISTROS?\n\n¡NO SE PUEDE DESHACER!')) {
+                            guardarRegistros([]);
+                            alert('✅ Todos los registros eliminados');
+                        }
+                        break;
+                    default:
+                        if (opcion) alert('Opción inválida');
                 }
             };
             
@@ -827,6 +979,10 @@ Te enviaré un recordatorio el día anterior.
                                     className={`px-4 py-2 rounded-lg text-sm ${vistaActual === 'registros' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
                                     Registros ({registros.length})
                                 </button>
+                                <button onClick={() => setVistaActual('comparativo')} 
+                                    className={`px-4 py-2 rounded-lg text-sm ${vistaActual === 'comparativo' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
+                                    📊 Comparativo
+                                </button>
                                 <button onClick={() => setView('admin')} className="px-4 py-2 bg-gray-100 rounded-lg text-sm">← Volver</button>
                             </div>
                         </div>
@@ -838,7 +994,7 @@ Te enviaré un recordatorio el día anterior.
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     <div className="bg-white p-6 rounded-xl shadow">
                                         <p className="text-gray-500 text-sm">Ingresos Totales</p>
-                                        <p className="text-3xl font-bold text-green-600">${stats.totalIngresos}</p>
+                                        <p className="text-3xl font-bold text-green-600">${formatearNumero(stats.totalIngresos)}</p>
                                     </div>
                                     <div className="bg-white p-6 rounded-xl shadow">
                                         <p className="text-gray-500 text-sm">Servicios</p>
@@ -846,7 +1002,7 @@ Te enviaré un recordatorio el día anterior.
                                     </div>
                                     <div className="bg-white p-6 rounded-xl shadow">
                                         <p className="text-gray-500 text-sm">Ticket Promedio</p>
-                                        <p className="text-3xl font-bold text-purple-600">${Math.round(stats.ticketPromedio)}</p>
+                                        <p className="text-3xl font-bold text-purple-600">${formatearNumero(Math.round(stats.ticketPromedio))}</p>
                                     </div>
                                     <div className="bg-white p-6 rounded-xl shadow">
                                         <p className="text-gray-500 text-sm">Clientas</p>
@@ -934,7 +1090,7 @@ Te enviaré un recordatorio el día anterior.
                                             <div key={mes} className="mb-3">
                                                 <div className="flex justify-between mb-1">
                                                     <span className="text-sm font-medium">{mes}</span>
-                                                    <span className="text-sm text-green-600 font-bold">${total}</span>
+                                                    <span className="text-sm text-green-600 font-bold">${formatearNumero(total)}</span>
                                                 </div>
                                                 <div className="w-full bg-gray-200 rounded-full h-2">
                                                     <div className="bg-green-600 h-2 rounded-full" 
@@ -966,6 +1122,12 @@ Te enviaré un recordatorio el día anterior.
                                         📂 Importar Excel
                                         <input type="file" accept=".xlsx,.xls" onChange={importarExcel} className="hidden" />
                                     </label>
+                                    {registros.length > 0 && (
+                                        <button onClick={mostrarMenuEliminacionRegistros}
+                                            className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200">
+                                            🗑️ Eliminación Masiva
+                                        </button>
+                                    )}
                                 </div>
                                 
                                 {mostrarFormulario && (
@@ -1062,7 +1224,7 @@ Te enviaré un recordatorio el día anterior.
                                                         })() : 'Sin fecha'}</td>
                                                         <td className="p-3 text-sm font-medium">{r.clienta}</td>
                                                         <td className="p-3 text-sm text-gray-600">{r.servicios.join(', ')}</td>
-                                                        <td className="p-3 text-sm font-bold text-green-600">${r.importe}</td>
+                                                        <td className="p-3 text-sm font-bold text-green-600">${formatearNumero(r.importe)}</td>
                                                         <td className="p-3 text-sm capitalize">{r.metodoPago}</td>
                                                         <td className="p-3 text-sm">{r.sucursal}</td>
                                                         <td className="p-3 text-sm">
@@ -1085,6 +1247,223 @@ Te enviaré un recordatorio el día anterior.
                                                 <p className="text-sm mt-2">Agregá tu primer registro, importá tu historial desde Excel, o importá desde reservas confirmadas</p>
                                             </div>
                                         )}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                        
+                        {vistaActual === 'comparativo' && (
+                            <>
+                                <div className="bg-white p-6 rounded-xl shadow">
+                                    <h2 className="text-2xl font-bold mb-4">📊 Análisis Comparativo</h2>
+                                    <p className="text-gray-600 mb-6">Compará períodos para identificar tendencias y crecimiento</p>
+                                    
+                                    {/* Comparación por Año */}
+                                    <div className="mb-8">
+                                        <h3 className="text-xl font-bold mb-4">📅 Comparación Interanual</h3>
+                                        {(() => {
+                                            const años = {};
+                                            registros.forEach(r => {
+                                                if (!r.fecha) return;
+                                                const año = r.fecha.substring(0, 4);
+                                                if (!años[año]) años[año] = { ingresos: 0, servicios: 0, clientas: new Set() };
+                                                años[año].ingresos += r.importe;
+                                                años[año].servicios += 1;
+                                                años[año].clientas.add(r.clienta);
+                                            });
+                                            
+                                            const añosData = Object.entries(años)
+                                                .map(([año, data]) => ({
+                                                    año,
+                                                    ingresos: data.ingresos,
+                                                    servicios: data.servicios,
+                                                    clientas: data.clientas.size
+                                                }))
+                                                .sort((a, b) => a.año.localeCompare(b.año));
+                                            
+                                            if (añosData.length === 0) {
+                                                return <p className="text-gray-500">No hay datos para comparar</p>;
+                                            }
+                                            
+                                            const maxIngresos = Math.max(...añosData.map(a => a.ingresos));
+                                            
+                                            return (
+                                                <div className="space-y-6">
+                                                    {añosData.map((data, idx) => {
+                                                        const anterior = idx > 0 ? añosData[idx - 1] : null;
+                                                        const crecimiento = anterior ? ((data.ingresos - anterior.ingresos) / anterior.ingresos * 100) : 0;
+                                                        
+                                                        return (
+                                                            <div key={data.año} className="border-l-4 border-blue-500 pl-4">
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <div>
+                                                                        <h4 className="text-lg font-bold">{data.año}</h4>
+                                                                        {anterior && (
+                                                                            <span className={`text-sm ${crecimiento >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                                {crecimiento >= 0 ? '📈' : '📉'} {crecimiento >= 0 ? '+' : ''}{crecimiento.toFixed(1)}% vs {anterior.año}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="text-right">
+                                                                        <p className="text-2xl font-bold text-green-600">${formatearNumero(data.ingresos)}</p>
+                                                                        <p className="text-sm text-gray-600">{data.servicios} servicios · {data.clientas} clientas</p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="w-full bg-gray-200 rounded-full h-3">
+                                                                    <div className="bg-gradient-to-r from-blue-500 to-green-500 h-3 rounded-full transition-all" 
+                                                                        style={{width: `${(data.ingresos / maxIngresos) * 100}%`}}></div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                    
+                                    {/* Comparación por Mes entre Años */}
+                                    <div className="mb-8">
+                                        <h3 className="text-xl font-bold mb-4">📆 Comparación Mes a Mes</h3>
+                                        {(() => {
+                                            const mesesPorAño = {};
+                                            registros.forEach(r => {
+                                                if (!r.fecha) return;
+                                                const [año, mes] = r.fecha.split('-');
+                                                if (!mesesPorAño[mes]) mesesPorAño[mes] = {};
+                                                if (!mesesPorAño[mes][año]) mesesPorAño[mes][año] = 0;
+                                                mesesPorAño[mes][año] += r.importe;
+                                            });
+                                            
+                                            const meses = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+                                            const nombresMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                                                                 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                                            const años = [...new Set(registros.map(r => r.fecha?.substring(0, 4)).filter(Boolean))].sort();
+                                            
+                                            if (años.length === 0) {
+                                                return <p className="text-gray-500">No hay datos para comparar</p>;
+                                            }
+                                            
+                                            return (
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full border-collapse">
+                                                        <thead>
+                                                            <tr className="bg-gray-100">
+                                                                <th className="p-3 text-left font-semibold">Mes</th>
+                                                                {años.map(año => (
+                                                                    <th key={año} className="p-3 text-right font-semibold">{año}</th>
+                                                                ))}
+                                                                {años.length > 1 && (
+                                                                    <th className="p-3 text-right font-semibold">Variación</th>
+                                                                )}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {meses.map((mes, idx) => {
+                                                                const valores = años.map(año => mesesPorAño[mes]?.[año] || 0);
+                                                                const variacion = valores.length > 1 && valores[valores.length - 2] > 0
+                                                                    ? ((valores[valores.length - 1] - valores[valores.length - 2]) / valores[valores.length - 2] * 100)
+                                                                    : null;
+                                                                
+                                                                return (
+                                                                    <tr key={mes} className="border-t hover:bg-gray-50">
+                                                                        <td className="p-3 font-medium">{nombresMeses[idx]}</td>
+                                                                        {valores.map((valor, i) => (
+                                                                            <td key={i} className="p-3 text-right">
+                                                                                {valor > 0 ? `$${formatearNumero(valor)}` : '-'}
+                                                                            </td>
+                                                                        ))}
+                                                                        {años.length > 1 && (
+                                                                            <td className="p-3 text-right">
+                                                                                {variacion !== null ? (
+                                                                                    <span className={variacion >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                                                                        {variacion >= 0 ? '↗' : '↘'} {variacion >= 0 ? '+' : ''}{variacion.toFixed(0)}%
+                                                                                    </span>
+                                                                                ) : '-'}
+                                                                            </td>
+                                                                        )}
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                        <tfoot>
+                                                            <tr className="bg-gray-100 font-bold">
+                                                                <td className="p-3">TOTAL</td>
+                                                                {años.map(año => {
+                                                                    const total = registros
+                                                                        .filter(r => r.fecha?.startsWith(año))
+                                                                        .reduce((sum, r) => sum + r.importe, 0);
+                                                                    return (
+                                                                        <td key={año} className="p-3 text-right text-green-600">
+                                                                            ${formatearNumero(total)}
+                                                                        </td>
+                                                                    );
+                                                                })}
+                                                                {años.length > 1 && <td></td>}
+                                                            </tr>
+                                                        </tfoot>
+                                                    </table>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                    
+                                    {/* Top Clientas Comparativo */}
+                                    <div>
+                                        <h3 className="text-xl font-bold mb-4">👑 Top Clientas por Año</h3>
+                                        {(() => {
+                                            const años = [...new Set(registros.map(r => r.fecha?.substring(0, 4)).filter(Boolean))].sort().reverse();
+                                            
+                                            if (años.length === 0) {
+                                                return <p className="text-gray-500">No hay datos</p>;
+                                            }
+                                            
+                                            return (
+                                                <div className="grid md:grid-cols-2 gap-6">
+                                                    {años.map(año => {
+                                                        const clientasAño = {};
+                                                        registros
+                                                            .filter(r => r.fecha?.startsWith(año))
+                                                            .forEach(r => {
+                                                                if (!r.clienta) return;
+                                                                if (!clientasAño[r.clienta]) clientasAño[r.clienta] = 0;
+                                                                clientasAño[r.clienta] += r.importe;
+                                                            });
+                                                        
+                                                        const top5 = Object.entries(clientasAño)
+                                                            .sort((a, b) => b[1] - a[1])
+                                                            .slice(0, 5);
+                                                        
+                                                        const max = top5[0]?.[1] || 1;
+                                                        
+                                                        return (
+                                                            <div key={año} className="bg-gray-50 p-4 rounded-lg">
+                                                                <h4 className="font-bold text-lg mb-3">{año}</h4>
+                                                                {top5.length > 0 ? (
+                                                                    <div className="space-y-3">
+                                                                        {top5.map(([clienta, total], idx) => (
+                                                                            <div key={clienta}>
+                                                                                <div className="flex justify-between text-sm mb-1">
+                                                                                    <span className="font-medium">
+                                                                                        {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}.`} {clienta}
+                                                                                    </span>
+                                                                                    <span className="text-green-600 font-bold">${formatearNumero(total)}</span>
+                                                                                </div>
+                                                                                <div className="w-full bg-gray-300 rounded-full h-2">
+                                                                                    <div className="bg-blue-600 h-2 rounded-full" 
+                                                                                        style={{width: `${(total / max) * 100}%`}}></div>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-gray-500 text-sm">Sin datos</p>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             </>
