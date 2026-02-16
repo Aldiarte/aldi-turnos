@@ -559,7 +559,7 @@ Te enviaré un recordatorio el día anterior.
                     fechaActual.setDate(fechaActual.getDate() + 1);
                 }
                 
-                return dias.slice(0, 5); // Máximo 5 días para que quepan verticalmente
+                return dias.slice(0, 4); // Máximo 4 días para que quepan con buen espaciado
             };
             
             const dias = generarDias();
@@ -592,31 +592,46 @@ Te enviaré un recordatorio el día anterior.
                     // Dibujar fondo
                     ctx.drawImage(img, 0, 0, width, height);
                     
-                    // Overlay semi-transparente
+                    // Overlay semi-transparente más oscuro para mejor contraste
                     ctx.fillStyle = `rgba(0, 0, 0, ${(100 - opacidad) / 100})`;
                     ctx.fillRect(0, 0, width, height);
                     
-                    // Texto: ubicación
+                    // HEADER - Ubicación y mes
                     ctx.fillStyle = 'white';
-                    ctx.font = 'bold 48px Arial';
                     ctx.textAlign = 'center';
-                    ctx.fillText(`📍 ${sucursal.nombre}`, width / 2, 200);
                     
-                    // Título del mes
-                    ctx.font = 'bold 72px Arial';
+                    // Ubicación
+                    ctx.font = 'bold 42px Arial';
+                    ctx.fillText(`📍 ${sucursal.nombre}`, width / 2, 150);
+                    
+                    // Mes
+                    ctx.font = 'bold 64px Arial';
                     const mes = new Date().toLocaleDateString('es-AR', { month: 'long' }).toUpperCase();
-                    ctx.fillText(mes, width / 2, 320);
+                    ctx.fillText(mes, width / 2, 240);
                     
-                    // Dibujar días y horarios
-                    let y = 450;
-                    dias.forEach(dia => {
-                        // Día
-                        ctx.font = 'bold 56px Arial';
+                    // Línea decorativa
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(200, 270);
+                    ctx.lineTo(880, 270);
+                    ctx.stroke();
+                    
+                    // DÍAS Y HORARIOS
+                    let y = 350;
+                    const espacioEntreDias = 250; // Espacio fijo entre cada día
+                    const maxDias = Math.min(dias.length, 4); // Máximo 4 días
+                    
+                    for (let d = 0; d < maxDias; d++) {
+                        const dia = dias[d];
+                        
+                        // Nombre del día
+                        ctx.font = 'bold 48px Arial';
                         ctx.fillStyle = 'white';
                         ctx.fillText(dia.dia, width / 2, y);
-                        y += 90;
+                        y += 70;
                         
-                        // Dividir horarios en líneas si son muchos (máx 5 por línea para evitar superposición)
+                        // Horarios - máximo 5 por línea
                         const horasPorLinea = 5;
                         const lineas = [];
                         for (let i = 0; i < dia.horas.length; i += horasPorLinea) {
@@ -624,55 +639,50 @@ Te enviaré un recordatorio el día anterior.
                         }
                         
                         // Dibujar cada línea de horarios
-                        lineas.forEach(lineaHoras => {
-                            ctx.font = 'bold 44px Arial'; // Reducir tamaño para evitar superposición
+                        lineas.forEach((lineaHoras, indexLinea) => {
+                            ctx.font = 'bold 38px Arial';
                             const totalHoras = lineaHoras.length;
-                            const espacioEntre = 160; // Aumentar espaciado significativamente
+                            const espacioEntre = 150;
                             const anchoTotal = (totalHoras - 1) * espacioEntre;
                             let x = (width - anchoTotal) / 2;
                             
                             lineaHoras.forEach(h => {
                                 if (h.ocupado) {
-                                    // Dibujar hora semi-transparente detrás
-                                    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                                    // Hora semi-transparente detrás
+                                    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
                                     ctx.fillText(h.hora, x, y);
                                     
-                                    // Dibujar corazón encima
+                                    // Corazón encima
                                     ctx.fillStyle = 'white';
-                                    ctx.font = 'bold 52px Arial';
+                                    ctx.font = 'bold 48px Arial';
                                     ctx.fillText('❤️', x, y);
-                                    ctx.font = 'bold 44px Arial';
+                                    ctx.font = 'bold 38px Arial';
                                 } else {
-                                    // Hora disponible - color blanco completo
+                                    // Hora disponible
                                     ctx.fillStyle = 'white';
                                     ctx.fillText(h.hora, x, y);
                                 }
                                 x += espacioEntre;
                             });
                             
-                            y += 75; // Espacio entre líneas de horarios
+                            y += 65;
                         });
                         
-                        y += 70; // Espacio extra después de cada día
-                    });
+                        // Espacio para el siguiente día (fijo)
+                        y = 350 + (d + 1) * espacioEntreDias;
+                    }
                     
-                    // Espacio antes del enlace
-                    y += 50;
+                    // FOOTER - Espacio reservado para que tu novia agregue el enlace manualmente
+                    const footerY = 1750;
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+                    ctx.fillRect(100, footerY, width - 200, 140);
                     
-                    // Llamado a la acción - fondo
-                    const boxY = Math.min(y, height - 250);
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-                    ctx.fillRect(100, boxY - 30, width - 200, 150);
-                    
-                    // Llamado a la acción - texto
-                    ctx.fillStyle = 'white';
-                    ctx.font = 'bold 52px Arial';
-                    ctx.fillText('👆 RESERVÁ TU TURNO', width / 2, boxY + 30);
-                    
-                    // URL
-                    ctx.font = 'bold 42px Arial';
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                    ctx.fillText('aldi-turnos.vercel.app', width / 2, boxY + 90);
+                    // Placeholder para el enlace (tu novia lo agregará con sticker de IG)
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.font = 'bold 38px Arial';
+                    ctx.fillText('👆', width / 2, footerY + 50);
+                    ctx.font = '32px Arial';
+                    ctx.fillText('(Agregar link con sticker)', width / 2, footerY + 100);
                 };
             }, [sucursalId, fechaInicio, fechaFin, backgroundIndex, opacidad, dias]);
             
@@ -716,9 +726,9 @@ Te enviaré un recordatorio el día anterior.
                                         ⚠️ No hay horarios configurados para este rango de fechas
                                     </div>
                                 )}
-                                {dias.length > 5 && (
+                                {dias.length > 4 && (
                                     <div className="bg-blue-50 border-l-4 border-blue-500 p-3 text-sm text-blue-800">
-                                        ℹ️ Solo se mostrarán los primeros 5 días (límite vertical de la historia)
+                                        ℹ️ Solo se mostrarán los primeros 4 días (mejor espaciado)
                                     </div>
                                 )}
                                 
@@ -765,7 +775,7 @@ Te enviaré un recordatorio el día anterior.
                                 
                                 <div className="bg-blue-50 border-l-4 border-blue-500 p-4 text-sm">
                                     <p className="text-blue-900">
-                                        <strong>💡 Tip:</strong> El enlace es visual (las personas lo escribirán manualmente). Los corazones ❤️ muestran horarios ocupados con el horario semi-visible detrás. Formato 1080x1920px perfecto para historias.
+                                        <strong>💡 Tip:</strong> El espacio del footer está reservado para que agregues el enlace manualmente con un sticker de Instagram. Los corazones ❤️ muestran horarios ocupados. Máximo 4 días por historia.
                                     </p>
                                 </div>
                             </div>
