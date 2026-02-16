@@ -649,8 +649,7 @@ Te enviaré un recordatorio el día anterior.
                     // DÍAS Y HORARIOS
                     let y = 350;
                     const totalDias = dias.length;
-                    const espacioDisponible = 1500; // Más espacio disponible (hasta y=1850)
-                    const espacioEntreDias = Math.min(280, Math.floor(espacioDisponible / totalDias)); // Más separación
+                    const espacioMinimo = 100; // Espacio mínimo entre fin de horarios y siguiente día
                     
                     for (let d = 0; d < totalDias; d++) {
                         const dia = dias[d];
@@ -695,11 +694,11 @@ Te enviaré un recordatorio el día anterior.
                                 x += espacioEntre;
                             });
                             
-                            y += 65;
+                            y += 65; // Espacio entre líneas de horarios del mismo día
                         });
                         
-                        // Espacio para el siguiente día (dinámico)
-                        y = 350 + (d + 1) * espacioEntreDias;
+                        // Agregar espacio fijo para el siguiente día (desde donde terminamos)
+                        y += espacioMinimo;
                     }
                     
                     // FOOTER - Espacio reservado (más compacto)
