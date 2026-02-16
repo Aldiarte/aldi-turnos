@@ -508,6 +508,17 @@ Te enviaré un recordatorio el día anterior.
             const [mostrarFormulario, setMostrarFormulario] = useState(false);
             const [vistaActual, setVistaActual] = useState('dashboard');
             
+            // Estados para el editor modal
+            const [editando, setEditando] = useState(null);
+            const [formEdit, setFormEdit] = useState({
+                clienta: '',
+                servicios: [],
+                importe: 0,
+                metodoPago: 'efectivo',
+                sucursal: 'Bahía Blanca',
+                notas: ''
+            });
+            
             // Cargar desde Firebase
             useEffect(() => {
                 const cargar = async () => {
@@ -532,6 +543,43 @@ Te enviaré un recordatorio el día anterior.
                     console.error('Error guardando registros:', error);
                     alert('❌ Error al guardar. Intentá de nuevo.');
                 }
+            };
+            
+            // Lista única de clientas para autocomplete
+            const clientasUnicas = [...new Set(registros.map(r => r.clienta).filter(c => c))].sort();
+            
+            // Abrir editor
+            const abrirEditor = (registro) => {
+                setEditando(registro.id);
+                setFormEdit({
+                    clienta: registro.clienta || '',
+                    servicios: registro.servicios || [],
+                    importe: registro.importe || 0,
+                    metodoPago: registro.metodoPago || 'efectivo',
+                    sucursal: registro.sucursal || 'Bahía Blanca',
+                    notas: registro.notas || ''
+                });
+            };
+            
+            // Guardar edición
+            const guardarEdicion = () => {
+                if (!formEdit.clienta) {
+                    alert('⚠️ Completá el nombre del cliente');
+                    return;
+                }
+                if (formEdit.servicios.length === 0) {
+                    alert('⚠️ Seleccioná al menos un servicio');
+                    return;
+                }
+                
+                const actualizados = registros.map(r => 
+                    r.id === editando 
+                        ? { ...r, ...formEdit, normalizado: true }
+                        : r
+                );
+                guardarRegistros(actualizados);
+                setEditando(null);
+                alert('✅ Registro actualizado');
             };
             
             // Agregar registro
@@ -604,6 +652,8 @@ Te enviaré un recordatorio el día anterior.
                 if (filtros.servicio && !r.servicios.some(s => s.toLowerCase().includes(filtros.servicio.toLowerCase()))) return false;
                 if (filtros.metodoPago && r.metodoPago !== filtros.metodoPago) return false;
                 if (filtros.sucursal && r.sucursal !== filtros.sucursal) return false;
+                if (filtros.estado === 'normalizado' && !r.normalizado) return false;
+                if (filtros.estado === 'pendiente' && r.normalizado) return false;
                 return true;
             });
             
@@ -674,27 +724,41 @@ Te enviaré un recordatorio el día anterior.
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                         const rows = XLSX.utils.sheet_to_json(firstSheet);
                         
-                        const nuevos = rows.map(row => ({
-                            id: Date.now() + Math.random(),
-                            fecha: row.Fecha || row.fecha || '',
-                            clienta: row.Clienta || row.clienta || '',
-                            servicios: (row.Servicios || row.servicios || '').toString().split(',').map(s => s.trim()).filter(s => s),
-                            importe: parseFloat(row.Importe || row.importe) || 0,
-                            metodoPago: (row['Método Pago'] || row['Metodo Pago'] || row.metodoPago || 'efectivo').toLowerCase(),
-                            sucursal: row.Sucursal || row.sucursal || 'Bahía Blanca',
-                            notas: row.Notas || row.notas || '',
-                            fechaCreacion: new Date().toISOString()
-                        })).filter(r => r.fecha && r.clienta && r.servicios.length > 0);
+                        const nuevos = rows.map(row => {
+                            // Mapear columnas flexiblemente
+                            const fecha = row.FECHA || row.Fecha || row.fecha || '';
+                            const clienta = row.CLIENTE || row.Cliente || row.Clienta || row.clienta || '';
+                            const servicio = row.SERVICIO || row.Servicio || row.Servicios || row.servicios || '';
+                            const precio = parseFloat(row.PRECIO || row.Precio || row.Importe || row.importe) || 0;
+                            const pago = (row.PAGO || row.Pago || row['Método Pago'] || row.metodoPago || 'efectivo').toString().toLowerCase();
+                            
+                            // Determinar si está normalizado (tiene cliente Y servicio)
+                            const normalizado = !!(clienta && servicio);
+                            
+                            return {
+                                id: Date.now() + Math.random(),
+                                fecha: fecha,
+                                clienta: clienta,
+                                servicios: servicio ? servicio.toString().split(',').map(s => s.trim()).filter(s => s) : [],
+                                importe: precio,
+                                metodoPago: pago,
+                                sucursal: row.Sucursal || row.sucursal || 'Bahía Blanca',
+                                notas: row.Notas || row.notas || 'Importado de Excel',
+                                normalizado: normalizado,
+                                fechaCreacion: new Date().toISOString()
+                            };
+                        }).filter(r => r.fecha && r.importe > 0); // Solo requiere fecha y precio
                         
                         if (nuevos.length > 0) {
+                            const sinNormalizar = nuevos.filter(r => !r.normalizado).length;
                             guardarRegistros([...registros, ...nuevos]);
-                            alert(`✅ ${nuevos.length} registros importados desde Excel`);
+                            alert(`✅ ${nuevos.length} registros importados\n\n${sinNormalizar > 0 ? `⚠️ ${sinNormalizar} pendientes de normalizar` : '✅ Todos normalizados'}`);
                         } else {
-                            alert('❌ No se encontraron registros válidos en el archivo');
+                            alert('❌ No se encontraron registros válidos.\n\nVerificá que el Excel tenga columnas: FECHA y PRECIO');
                         }
                     } catch (error) {
                         console.error('Error importando:', error);
-                        alert('❌ Error al importar. Verificá que el formato del Excel sea correcto.');
+                        alert('❌ Error al importar. Verificá el formato del Excel.');
                     }
                 };
                 reader.readAsArrayBuffer(file);
@@ -714,6 +778,127 @@ Te enviaré un recordatorio el día anterior.
             
             return (
                 <div className="min-h-screen bg-gray-100">
+                    {/* Modal de Edición */}
+                    {editando && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setEditando(null)}>
+                            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                                <div className="p-6">
+                                    <h2 className="text-2xl font-bold mb-6">✏️ Editar Registro</h2>
+                                    
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-semibold mb-2 text-gray-700">📅 Fecha</label>
+                                        <input type="text" 
+                                            value={new Date(registros.find(r => r.id === editando)?.fecha || new Date()).toLocaleDateString('es-AR')}
+                                            disabled
+                                            className="w-full p-3 border rounded-lg bg-gray-50 text-gray-600" />
+                                    </div>
+                                    
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-semibold mb-2 text-gray-700">👤 Cliente</label>
+                                        <input 
+                                            type="text"
+                                            list="clientas-list"
+                                            value={formEdit.clienta}
+                                            onChange={(e) => setFormEdit({...formEdit, clienta: e.target.value})}
+                                            placeholder="Nombre del cliente"
+                                            className="w-full p-3 border-2 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+                                        <datalist id="clientas-list">
+                                            {clientasUnicas.map(c => (
+                                                <option key={c} value={c} />
+                                            ))}
+                                        </datalist>
+                                        <p className="text-xs text-gray-500 mt-1">Empezá a escribir para ver sugerencias</p>
+                                    </div>
+                                    
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-semibold mb-2 text-gray-700">💅 Servicios (uno o más)</label>
+                                        <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-gray-50">
+                                            {servicios.map(s => (
+                                                <label key={s.id} className="flex items-center gap-2 p-2 border rounded bg-white hover:bg-purple-50 cursor-pointer transition">
+                                                    <input 
+                                                        type="checkbox"
+                                                        checked={formEdit.servicios.includes(s.nombre)}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setFormEdit({...formEdit, servicios: [...formEdit.servicios, s.nombre]});
+                                                            } else {
+                                                                setFormEdit({...formEdit, servicios: formEdit.servicios.filter(n => n !== s.nombre)});
+                                                            }
+                                                        }}
+                                                        className="w-4 h-4 text-purple-600" />
+                                                    <span className="text-sm flex-1">{s.nombre}</span>
+                                                    <span className="text-xs text-gray-500">${s.precio}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-semibold mb-2 text-gray-700">💰 Importe ($)</label>
+                                        <input 
+                                            type="number"
+                                            value={formEdit.importe}
+                                            onChange={(e) => setFormEdit({...formEdit, importe: parseFloat(e.target.value) || 0})}
+                                            className="w-full p-3 border-2 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+                                    </div>
+                                    
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-semibold mb-2 text-gray-700">💳 Método de Pago</label>
+                                        <div className="flex gap-3">
+                                            {['efectivo', 'mercadopago', 'transferencia'].map(metodo => (
+                                                <label key={metodo} className="flex-1 cursor-pointer">
+                                                    <input 
+                                                        type="radio"
+                                                        name="metodoPago"
+                                                        checked={formEdit.metodoPago === metodo}
+                                                        onChange={() => setFormEdit({...formEdit, metodoPago: metodo})}
+                                                        className="peer sr-only" />
+                                                    <div className="border-2 rounded-lg p-3 text-center peer-checked:border-purple-600 peer-checked:bg-purple-50 peer-checked:text-purple-700 hover:border-purple-300 transition">
+                                                        <span className="font-medium capitalize">{metodo}</span>
+                                                    </div>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-semibold mb-2 text-gray-700">📍 Sucursal</label>
+                                        <select 
+                                            value={formEdit.sucursal}
+                                            onChange={(e) => setFormEdit({...formEdit, sucursal: e.target.value})}
+                                            className="w-full p-3 border-2 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                                            <option value="Bahía Blanca">Bahía Blanca</option>
+                                            <option value="Punta Alta">Punta Alta</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div className="mb-6">
+                                        <label className="block text-sm font-semibold mb-2 text-gray-700">📝 Notas</label>
+                                        <textarea 
+                                            value={formEdit.notas}
+                                            onChange={(e) => setFormEdit({...formEdit, notas: e.target.value})}
+                                            rows={2}
+                                            placeholder="Notas adicionales..."
+                                            className="w-full p-3 border-2 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"></textarea>
+                                    </div>
+                                    
+                                    <div className="flex gap-3">
+                                        <button 
+                                            onClick={guardarEdicion}
+                                            className="flex-1 bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition">
+                                            💾 Guardar Cambios
+                                        </button>
+                                        <button 
+                                            onClick={() => setEditando(null)}
+                                            className="flex-1 bg-gray-200 py-3 rounded-lg font-semibold hover:bg-gray-300 transition">
+                                            ❌ Cancelar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <header className="bg-white shadow p-4">
                         <div className="max-w-7xl mx-auto flex justify-between items-center">
                             <h1 className="text-xl font-bold">📊 Análisis de Negocio</h1>
@@ -801,7 +986,17 @@ Te enviaré un recordatorio el día anterior.
                                                 <option value="Punta Alta">Punta Alta</option>
                                             </select>
                                         </div>
-                                    </div>
+                                    
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm mb-1">Estado</label>
+                                            <select value={filtros.estado || ''}
+                                                onChange={(e) => setFiltros({...filtros, estado: e.target.value})}
+                                                className="w-full p-2 border rounded">
+                                                <option value="">Todos</option>
+                                                <option value="normalizado">✅ Normalizados</option>
+                                                <option value="pendiente">🔄 Pendientes</option>
+                                            </select></div>
                                     {(filtros.fechaInicio || filtros.fechaFin || filtros.clienta || filtros.servicio || filtros.metodoPago || filtros.sucursal) && (
                                         <button onClick={() => setFiltros({fechaInicio: '', fechaFin: '', clienta: '', servicio: '', metodoPago: '', sucursal: ''})}
                                             className="mt-4 text-sm text-blue-600 hover:underline">
@@ -942,35 +1137,53 @@ Te enviaré un recordatorio el día anterior.
                                         <table className="w-full">
                                             <thead className="bg-gray-100">
                                                 <tr>
+                                                    <th className="p-3 text-left text-sm font-semibold w-24">Estado</th>
                                                     <th className="p-3 text-left text-sm font-semibold">Fecha</th>
                                                     <th className="p-3 text-left text-sm font-semibold">Clienta</th>
                                                     <th className="p-3 text-left text-sm font-semibold">Servicios</th>
                                                     <th className="p-3 text-left text-sm font-semibold">Importe</th>
                                                     <th className="p-3 text-left text-sm font-semibold">Pago</th>
                                                     <th className="p-3 text-left text-sm font-semibold">Sucursal</th>
-                                                    <th className="p-3 text-left text-sm font-semibold">Acción</th>
+                                                    <th className="p-3 text-left text-sm font-semibold w-32">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {registrosFiltrados.map(r => (
-                                                    <tr key={r.id} className="border-t hover:bg-gray-50">
-                                                        <td className="p-3 text-sm">{new Date(r.fecha).toLocaleDateString('es-AR')}</td>
-                                                        <td className="p-3 text-sm font-medium">{r.clienta}</td>
-                                                        <td className="p-3 text-sm text-gray-600">{r.servicios.join(', ')}</td>
+                                                    <tr key={r.id} className="border-t hover:bg-gray-50 transition">
+                                                        <td className="p-3 text-sm">
+                                                            {r.normalizado ? (
+                                                                <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">✅ OK</span>
+                                                            ) : (
+                                                                <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">🔄 Revisar</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-3 text-sm whitespace-nowrap">{new Date(r.fecha).toLocaleDateString('es-AR')}</td>
+                                                        <td className="p-3 text-sm font-medium">{r.clienta || <span className="text-gray-400 italic">(sin cliente)</span>}</td>
+                                                        <td className="p-3 text-sm text-gray-600">{r.servicios.length > 0 ? r.servicios.join(', ') : <span className="text-gray-400 italic">(sin servicios)</span>}</td>
                                                         <td className="p-3 text-sm font-bold text-green-600">${r.importe}</td>
                                                         <td className="p-3 text-sm capitalize">{r.metodoPago}</td>
                                                         <td className="p-3 text-sm">{r.sucursal}</td>
                                                         <td className="p-3 text-sm">
-                                                            <button onClick={() => {
-                                                                if (confirm('¿Eliminar este registro?\n\nNo se puede deshacer.')) {
-                                                                    guardarRegistros(registros.filter(reg => reg.id !== r.id));
-                                                                }
-                                                            }} className="text-red-600 hover:text-red-800 text-xs font-semibold">
-                                                                🗑️
-                                                            </button>
+                                                            <div className="flex gap-2">
+                                                                <button 
+                                                                    onClick={() => abrirEditor(r)}
+                                                                    className="text-blue-600 hover:text-blue-800 font-semibold text-lg"
+                                                                    title="Editar">
+                                                                    ✏️
+                                                                </button>
+                                                                <button onClick={() => {
+                                                                    if (confirm('¿Eliminar este registro?\n\nNo se puede deshacer.')) {
+                                                                        guardarRegistros(registros.filter(reg => reg.id !== r.id));
+                                                                    }
+                                                                }} className="text-red-600 hover:text-red-800 font-semibold text-lg"
+                                                                title="Eliminar">
+                                                                    🗑️
+                                                                </button>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 ))}
+
                                             </tbody>
                                         </table>
                                         {registrosFiltrados.length === 0 && (
