@@ -57,6 +57,8 @@
     <!-- Optimizado: usar CDN más rápido y defer -->
     <script defer crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script defer crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- SheetJS para importar/exportar Excel -->
+    <script defer src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script defer src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script defer src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -477,6 +479,511 @@ Te enviaré un recordatorio el día anterior.
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // PANEL DE ANÁLISIS CON FIREBASE Y EXCEL
+        function PanelAnalisis({ reservas, servicios, setView }) {
+            const [registros, setRegistros] = useState([]);
+            const [cargando, setCargando] = useState(true);
+            const [nuevoRegistro, setNuevoRegistro] = useState({
+                fecha: new Date().toISOString().split('T')[0],
+                clienta: '',
+                servicios: [],
+                importe: 0,
+                metodoPago: 'efectivo',
+                sucursal: 'Bahía Blanca',
+                notas: ''
+            });
+            const [filtros, setFiltros] = useState({
+                fechaInicio: '',
+                fechaFin: '',
+                clienta: '',
+                servicio: '',
+                metodoPago: '',
+                sucursal: ''
+            });
+            const [mostrarFormulario, setMostrarFormulario] = useState(false);
+            const [vistaActual, setVistaActual] = useState('dashboard');
+            
+            // Cargar desde Firebase
+            useEffect(() => {
+                const cargar = async () => {
+                    try {
+                        const data = await FirebaseDB.get('registrosIngresos');
+                        setRegistros(data || []);
+                    } catch (error) {
+                        console.error('Error cargando registros:', error);
+                        setRegistros([]);
+                    }
+                    setCargando(false);
+                };
+                cargar();
+            }, []);
+            
+            // Guardar en Firebase
+            const guardarRegistros = async (nuevos) => {
+                setRegistros(nuevos);
+                try {
+                    await FirebaseDB.set('registrosIngresos', nuevos);
+                } catch (error) {
+                    console.error('Error guardando registros:', error);
+                    alert('❌ Error al guardar. Intentá de nuevo.');
+                }
+            };
+            
+            // Agregar registro
+            const agregarRegistro = () => {
+                if (!nuevoRegistro.clienta || nuevoRegistro.servicios.length === 0) {
+                    alert('Completá clienta y servicios');
+                    return;
+                }
+                const registro = {
+                    ...nuevoRegistro,
+                    id: Date.now(),
+                    fechaCreacion: new Date().toISOString()
+                };
+                guardarRegistros([...registros, registro]);
+                setNuevoRegistro({
+                    fecha: new Date().toISOString().split('T')[0],
+                    clienta: '',
+                    servicios: [],
+                    importe: 0,
+                    metodoPago: 'efectivo',
+                    sucursal: 'Bahía Blanca',
+                    notas: ''
+                });
+                setMostrarFormulario(false);
+                alert('✅ Registro agregado');
+            };
+            
+            // Importar desde reservas confirmadas
+            const importarDesdeReservas = () => {
+                const confirmadas = reservas.filter(r => r.estado === 'confirmada' && !r.esFicticia);
+                let importados = 0;
+                const nuevos = [];
+                
+                confirmadas.forEach(r => {
+                    const existe = registros.some(reg => 
+                        reg.clienta === r.cliente.nombre && 
+                        reg.fecha === r.fecha &&
+                        reg.importe === r.servicios.reduce((sum, s) => sum + s.precio, 0)
+                    );
+                    
+                    if (!existe) {
+                        nuevos.push({
+                            id: Date.now() + Math.random(),
+                            fecha: r.fecha,
+                            clienta: r.cliente.nombre,
+                            servicios: r.servicios.map(s => s.nombre),
+                            importe: r.servicios.reduce((sum, s) => sum + s.precio, 0),
+                            metodoPago: 'transferencia',
+                            sucursal: r.sucursal.nombre,
+                            notas: 'Importado desde reserva',
+                            fechaCreacion: new Date().toISOString()
+                        });
+                        importados++;
+                    }
+                });
+                
+                if (importados > 0) {
+                    guardarRegistros([...registros, ...nuevos]);
+                    alert(`✅ ${importados} registros importados desde reservas`);
+                } else {
+                    alert('No hay nuevas reservas para importar');
+                }
+            };
+            
+            // Filtrar registros
+            const registrosFiltrados = registros.filter(r => {
+                if (filtros.fechaInicio && r.fecha < filtros.fechaInicio) return false;
+                if (filtros.fechaFin && r.fecha > filtros.fechaFin) return false;
+                if (filtros.clienta && !r.clienta.toLowerCase().includes(filtros.clienta.toLowerCase())) return false;
+                if (filtros.servicio && !r.servicios.some(s => s.toLowerCase().includes(filtros.servicio.toLowerCase()))) return false;
+                if (filtros.metodoPago && r.metodoPago !== filtros.metodoPago) return false;
+                if (filtros.sucursal && r.sucursal !== filtros.sucursal) return false;
+                return true;
+            });
+            
+            // Estadísticas
+            const stats = {
+                totalIngresos: registrosFiltrados.reduce((sum, r) => sum + r.importe, 0),
+                cantidadServicios: registrosFiltrados.length,
+                ticketPromedio: registrosFiltrados.length > 0 
+                    ? registrosFiltrados.reduce((sum, r) => sum + r.importe, 0) / registrosFiltrados.length 
+                    : 0,
+                clientasUnicas: [...new Set(registrosFiltrados.map(r => r.clienta))].length
+            };
+            
+            // Servicios más vendidos
+            const serviciosMasVendidos = () => {
+                const conteo = {};
+                registrosFiltrados.forEach(r => {
+                    r.servicios.forEach(s => {
+                        conteo[s] = (conteo[s] || 0) + 1;
+                    });
+                });
+                return Object.entries(conteo).sort((a, b) => b[1] - a[1]).slice(0, 5);
+            };
+            
+            // Ingresos por mes
+            const ingresosPorMes = () => {
+                const meses = {};
+                registrosFiltrados.forEach(r => {
+                    const mes = r.fecha.substring(0, 7);
+                    meses[mes] = (meses[mes] || 0) + r.importe;
+                });
+                return Object.entries(meses).sort((a, b) => a[0].localeCompare(b[0]));
+            };
+            
+            // Exportar a Excel
+            const exportarExcel = () => {
+                try {
+                    const datos = registrosFiltrados.map(r => ({
+                        Fecha: r.fecha,
+                        Clienta: r.clienta,
+                        Servicios: r.servicios.join(', '),
+                        Importe: r.importe,
+                        'Método Pago': r.metodoPago,
+                        Sucursal: r.sucursal,
+                        Notas: r.notas || ''
+                    }));
+                    
+                    const ws = XLSX.utils.json_to_sheet(datos);
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "Registros");
+                    XLSX.writeFile(wb, `analisis-aldi-${new Date().toISOString().split('T')[0]}.xlsx`);
+                } catch (error) {
+                    console.error('Error exportando:', error);
+                    alert('❌ Error al exportar. Asegurate de tener datos para exportar.');
+                }
+            };
+            
+            // Importar desde Excel
+            const importarExcel = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = new Uint8Array(event.target.result);
+                        const workbook = XLSX.read(data, {type: 'array'});
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        const rows = XLSX.utils.sheet_to_json(firstSheet);
+                        
+                        const nuevos = rows.map(row => ({
+                            id: Date.now() + Math.random(),
+                            fecha: row.Fecha || row.fecha || '',
+                            clienta: row.Clienta || row.clienta || '',
+                            servicios: (row.Servicios || row.servicios || '').toString().split(',').map(s => s.trim()).filter(s => s),
+                            importe: parseFloat(row.Importe || row.importe) || 0,
+                            metodoPago: (row['Método Pago'] || row['Metodo Pago'] || row.metodoPago || 'efectivo').toLowerCase(),
+                            sucursal: row.Sucursal || row.sucursal || 'Bahía Blanca',
+                            notas: row.Notas || row.notas || '',
+                            fechaCreacion: new Date().toISOString()
+                        })).filter(r => r.fecha && r.clienta && r.servicios.length > 0);
+                        
+                        if (nuevos.length > 0) {
+                            guardarRegistros([...registros, ...nuevos]);
+                            alert(`✅ ${nuevos.length} registros importados desde Excel`);
+                        } else {
+                            alert('❌ No se encontraron registros válidos en el archivo');
+                        }
+                    } catch (error) {
+                        console.error('Error importando:', error);
+                        alert('❌ Error al importar. Verificá que el formato del Excel sea correcto.');
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+                e.target.value = '';
+            };
+            
+            if (cargando) {
+                return (
+                    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="text-6xl mb-4">📊</div>
+                            <p className="text-xl font-bold">Cargando análisis...</p>
+                        </div>
+                    </div>
+                );
+            }
+            
+            return (
+                <div className="min-h-screen bg-gray-100">
+                    <header className="bg-white shadow p-4">
+                        <div className="max-w-7xl mx-auto flex justify-between items-center">
+                            <h1 className="text-xl font-bold">📊 Análisis de Negocio</h1>
+                            <div className="flex gap-2">
+                                <button onClick={() => setVistaActual('dashboard')} 
+                                    className={`px-4 py-2 rounded-lg text-sm ${vistaActual === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
+                                    Dashboard
+                                </button>
+                                <button onClick={() => setVistaActual('registros')} 
+                                    className={`px-4 py-2 rounded-lg text-sm ${vistaActual === 'registros' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
+                                    Registros ({registros.length})
+                                </button>
+                                <button onClick={() => setView('admin')} className="px-4 py-2 bg-gray-100 rounded-lg text-sm">← Volver</button>
+                            </div>
+                        </div>
+                    </header>
+                    
+                    <div className="max-w-7xl mx-auto p-4 space-y-6">
+                        {vistaActual === 'dashboard' && (
+                            <>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <p className="text-gray-500 text-sm">Ingresos Totales</p>
+                                        <p className="text-3xl font-bold text-green-600">${stats.totalIngresos}</p>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <p className="text-gray-500 text-sm">Servicios</p>
+                                        <p className="text-3xl font-bold text-blue-600">{stats.cantidadServicios}</p>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <p className="text-gray-500 text-sm">Ticket Promedio</p>
+                                        <p className="text-3xl font-bold text-purple-600">${Math.round(stats.ticketPromedio)}</p>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <p className="text-gray-500 text-sm">Clientas</p>
+                                        <p className="text-3xl font-bold text-pink-600">{stats.clientasUnicas}</p>
+                                    </div>
+                                </div>
+                                
+                                <div className="bg-white p-6 rounded-xl shadow">
+                                    <h3 className="font-bold mb-4">🔍 Filtros</h3>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-sm mb-1">Desde</label>
+                                            <input type="date" value={filtros.fechaInicio} 
+                                                onChange={(e) => setFiltros({...filtros, fechaInicio: e.target.value})}
+                                                className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm mb-1">Hasta</label>
+                                            <input type="date" value={filtros.fechaFin} 
+                                                onChange={(e) => setFiltros({...filtros, fechaFin: e.target.value})}
+                                                className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm mb-1">Clienta</label>
+                                            <input type="text" placeholder="Buscar..." value={filtros.clienta}
+                                                onChange={(e) => setFiltros({...filtros, clienta: e.target.value})}
+                                                className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm mb-1">Servicio</label>
+                                            <input type="text" placeholder="Buscar..." value={filtros.servicio}
+                                                onChange={(e) => setFiltros({...filtros, servicio: e.target.value})}
+                                                className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm mb-1">Método Pago</label>
+                                            <select value={filtros.metodoPago}
+                                                onChange={(e) => setFiltros({...filtros, metodoPago: e.target.value})}
+                                                className="w-full p-2 border rounded">
+                                                <option value="">Todos</option>
+                                                <option value="efectivo">Efectivo</option>
+                                                <option value="transferencia">Transferencia</option>
+                                                <option value="mercadopago">MercadoPago</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm mb-1">Sucursal</label>
+                                            <select value={filtros.sucursal}
+                                                onChange={(e) => setFiltros({...filtros, sucursal: e.target.value})}
+                                                className="w-full p-2 border rounded">
+                                                <option value="">Todas</option>
+                                                <option value="Bahía Blanca">Bahía Blanca</option>
+                                                <option value="Punta Alta">Punta Alta</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    {(filtros.fechaInicio || filtros.fechaFin || filtros.clienta || filtros.servicio || filtros.metodoPago || filtros.sucursal) && (
+                                        <button onClick={() => setFiltros({fechaInicio: '', fechaFin: '', clienta: '', servicio: '', metodoPago: '', sucursal: ''})}
+                                            className="mt-4 text-sm text-blue-600 hover:underline">
+                                            Limpiar filtros
+                                        </button>
+                                    )}
+                                </div>
+                                
+                                <div className="grid md:grid-cols-2 gap-6">
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <h3 className="font-bold mb-4">🏆 Servicios Más Vendidos</h3>
+                                        {serviciosMasVendidos().length > 0 ? serviciosMasVendidos().map(([servicio, cantidad]) => (
+                                            <div key={servicio} className="mb-3">
+                                                <div className="flex justify-between mb-1">
+                                                    <span className="text-sm font-medium">{servicio}</span>
+                                                    <span className="text-sm text-gray-600">{cantidad}</span>
+                                                </div>
+                                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                                    <div className="bg-blue-600 h-2 rounded-full" 
+                                                        style={{width: `${(cantidad / registrosFiltrados.length) * 100}%`}}></div>
+                                                </div>
+                                            </div>
+                                        )) : <p className="text-gray-500 text-sm">No hay datos para mostrar</p>}
+                                    </div>
+                                    
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <h3 className="font-bold mb-4">📈 Ingresos por Mes</h3>
+                                        {ingresosPorMes().length > 0 ? ingresosPorMes().slice(-6).map(([mes, total]) => (
+                                            <div key={mes} className="mb-3">
+                                                <div className="flex justify-between mb-1">
+                                                    <span className="text-sm font-medium">{mes}</span>
+                                                    <span className="text-sm text-green-600 font-bold">${total}</span>
+                                                </div>
+                                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                                    <div className="bg-green-600 h-2 rounded-full" 
+                                                        style={{width: `${(total / Math.max(...ingresosPorMes().map(m => m[1]))) * 100}%`}}></div>
+                                                </div>
+                                            </div>
+                                        )) : <p className="text-gray-500 text-sm">No hay datos para mostrar</p>}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                        
+                        {vistaActual === 'registros' && (
+                            <>
+                                <div className="flex gap-2 flex-wrap">
+                                    <button onClick={() => setMostrarFormulario(!mostrarFormulario)}
+                                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                                        + Agregar Registro
+                                    </button>
+                                    <button onClick={importarDesdeReservas}
+                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                        📥 Importar Reservas
+                                    </button>
+                                    <button onClick={exportarExcel}
+                                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                                        📤 Exportar Excel
+                                    </button>
+                                    <label className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 cursor-pointer">
+                                        📂 Importar Excel
+                                        <input type="file" accept=".xlsx,.xls" onChange={importarExcel} className="hidden" />
+                                    </label>
+                                </div>
+                                
+                                {mostrarFormulario && (
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <h3 className="font-bold mb-4">Nuevo Registro</h3>
+                                        <div className="grid md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm mb-1">Fecha</label>
+                                                <input type="date" value={nuevoRegistro.fecha}
+                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, fecha: e.target.value})}
+                                                    className="w-full p-2 border rounded" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm mb-1">Clienta</label>
+                                                <input type="text" value={nuevoRegistro.clienta}
+                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, clienta: e.target.value})}
+                                                    className="w-full p-2 border rounded" placeholder="Nombre de la clienta" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm mb-1">Servicios</label>
+                                                <select multiple value={nuevoRegistro.servicios}
+                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, servicios: Array.from(e.target.selectedOptions, option => option.value)})}
+                                                    className="w-full p-2 border rounded h-24">
+                                                    {servicios.map(s => (
+                                                        <option key={s.id} value={s.nombre}>{s.nombre} - ${s.precio}</option>
+                                                    ))}
+                                                </select>
+                                                <p className="text-xs text-gray-500 mt-1">Mantené Ctrl para seleccionar varios</p>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm mb-1">Importe ($)</label>
+                                                <input type="number" value={nuevoRegistro.importe}
+                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, importe: parseFloat(e.target.value) || 0})}
+                                                    className="w-full p-2 border rounded" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm mb-1">Método Pago</label>
+                                                <select value={nuevoRegistro.metodoPago}
+                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, metodoPago: e.target.value})}
+                                                    className="w-full p-2 border rounded">
+                                                    <option value="efectivo">Efectivo</option>
+                                                    <option value="transferencia">Transferencia</option>
+                                                    <option value="mercadopago">MercadoPago</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm mb-1">Sucursal</label>
+                                                <select value={nuevoRegistro.sucursal}
+                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, sucursal: e.target.value})}
+                                                    className="w-full p-2 border rounded">
+                                                    <option value="Bahía Blanca">Bahía Blanca</option>
+                                                    <option value="Punta Alta">Punta Alta</option>
+                                                </select>
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="block text-sm mb-1">Notas (opcional)</label>
+                                                <input type="text" value={nuevoRegistro.notas}
+                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, notas: e.target.value})}
+                                                    className="w-full p-2 border rounded" placeholder="Notas adicionales" />
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 mt-4">
+                                            <button onClick={agregarRegistro} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                                                ✓ Guardar
+                                            </button>
+                                            <button onClick={() => setMostrarFormulario(false)} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">
+                                                Cancelar
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                <div className="bg-white rounded-xl shadow overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-100">
+                                                <tr>
+                                                    <th className="p-3 text-left text-sm font-semibold">Fecha</th>
+                                                    <th className="p-3 text-left text-sm font-semibold">Clienta</th>
+                                                    <th className="p-3 text-left text-sm font-semibold">Servicios</th>
+                                                    <th className="p-3 text-left text-sm font-semibold">Importe</th>
+                                                    <th className="p-3 text-left text-sm font-semibold">Pago</th>
+                                                    <th className="p-3 text-left text-sm font-semibold">Sucursal</th>
+                                                    <th className="p-3 text-left text-sm font-semibold">Acción</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {registrosFiltrados.map(r => (
+                                                    <tr key={r.id} className="border-t hover:bg-gray-50">
+                                                        <td className="p-3 text-sm">{new Date(r.fecha).toLocaleDateString('es-AR')}</td>
+                                                        <td className="p-3 text-sm font-medium">{r.clienta}</td>
+                                                        <td className="p-3 text-sm text-gray-600">{r.servicios.join(', ')}</td>
+                                                        <td className="p-3 text-sm font-bold text-green-600">${r.importe}</td>
+                                                        <td className="p-3 text-sm capitalize">{r.metodoPago}</td>
+                                                        <td className="p-3 text-sm">{r.sucursal}</td>
+                                                        <td className="p-3 text-sm">
+                                                            <button onClick={() => {
+                                                                if (confirm('¿Eliminar este registro?\n\nNo se puede deshacer.')) {
+                                                                    guardarRegistros(registros.filter(reg => reg.id !== r.id));
+                                                                }
+                                                            }} className="text-red-600 hover:text-red-800 text-xs font-semibold">
+                                                                🗑️
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                        {registrosFiltrados.length === 0 && (
+                                            <div className="p-12 text-center text-gray-500">
+                                                <div className="text-6xl mb-4">📊</div>
+                                                <p className="text-lg font-medium">No hay registros</p>
+                                                <p className="text-sm mt-2">Agregá tu primer registro, importá tu historial desde Excel, o importá desde reservas confirmadas</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             );
@@ -946,6 +1453,91 @@ Te enviaré un recordatorio el día anterior.
                     FirebaseDB.unlisten('reservas');
                 };
             }, []);
+            
+            // Sincronización automática diaria a las 23:59
+            useEffect(() => {
+                const sincronizarAutomaticamente = async () => {
+                    try {
+                        // Obtener registros actuales de análisis
+                        const registrosActuales = await FirebaseDB.get('registrosIngresos') || [];
+                        
+                        // Obtener fecha de hoy en formato YYYY-MM-DD
+                        const hoy = new Date();
+                        hoy.setHours(0, 0, 0, 0);
+                        const hoyStr = hoy.toISOString().split('T')[0];
+                        
+                        // Filtrar reservas confirmadas cuya fecha ya pasó (hasta hoy inclusive)
+                        const reservasParaRegistrar = reservas.filter(r => {
+                            if (r.estado !== 'confirmada' || r.esFicticia) return false;
+                            
+                            // Verificar que la fecha de la reserva sea hoy o anterior
+                            const fechaReserva = new Date(r.fecha);
+                            fechaReserva.setHours(0, 0, 0, 0);
+                            
+                            if (fechaReserva > hoy) return false; // Reserva futura, no registrar
+                            
+                            // Verificar si ya existe en registros
+                            const yaExiste = registrosActuales.some(reg => 
+                                reg.clienta === r.cliente.nombre && 
+                                reg.fecha === r.fecha &&
+                                reg.importe === r.servicios.reduce((sum, s) => sum + s.precio, 0)
+                            );
+                            
+                            return !yaExiste;
+                        });
+                        
+                        if (reservasParaRegistrar.length > 0) {
+                            console.log(`[Auto-sync] Registrando ${reservasParaRegistrar.length} reservas del día`);
+                            
+                            const nuevosRegistros = reservasParaRegistrar.map(r => ({
+                                id: Date.now() + Math.random(),
+                                fecha: r.fecha,
+                                clienta: r.cliente.nombre,
+                                servicios: r.servicios.map(s => s.nombre),
+                                importe: r.servicios.reduce((sum, s) => sum + s.precio, 0),
+                                metodoPago: 'transferencia',
+                                sucursal: r.sucursal.nombre,
+                                notas: 'Auto-registrado',
+                                fechaCreacion: new Date().toISOString()
+                            }));
+                            
+                            await FirebaseDB.set('registrosIngresos', [...registrosActuales, ...nuevosRegistros]);
+                            console.log(`[Auto-sync] ✅ ${nuevosRegistros.length} registros agregados`);
+                        }
+                    } catch (error) {
+                        console.error('[Auto-sync] Error:', error);
+                    }
+                };
+                
+                // Calcular tiempo hasta las 23:59
+                const programarSincronizacion = () => {
+                    const ahora = new Date();
+                    const proximaSincronizacion = new Date();
+                    proximaSincronizacion.setHours(23, 59, 0, 0);
+                    
+                    // Si ya pasaron las 23:59 de hoy, programar para mañana
+                    if (ahora > proximaSincronizacion) {
+                        proximaSincronizacion.setDate(proximaSincronizacion.getDate() + 1);
+                    }
+                    
+                    const tiempoHasta = proximaSincronizacion - ahora;
+                    console.log(`[Auto-sync] Próxima sincronización en ${Math.round(tiempoHasta / 1000 / 60)} minutos`);
+                    
+                    return setTimeout(() => {
+                        sincronizarAutomaticamente();
+                        // Reprogramar para el día siguiente
+                        programarSincronizacion();
+                    }, tiempoHasta);
+                };
+                
+                // Ejecutar sincronización inmediata al cargar (para recuperar días anteriores)
+                sincronizarAutomaticamente();
+                
+                // Programar sincronización diaria
+                const timerId = programarSincronizacion();
+                
+                return () => clearTimeout(timerId);
+            }, [reservas]);
 
             const guardarReservas = async (r) => {
                 // Convertir array a objeto con IDs como keys
@@ -1228,6 +1820,14 @@ Te enviaré un recordatorio el día anterior.
                     horarios={horarios}
                     setView={setView}
                     guardarReservas={guardarReservas}
+                />;
+            }
+
+            if (view === 'analisis') {
+                return <PanelAnalisis
+                    reservas={reservas}
+                    servicios={servicios}
+                    setView={setView}
                 />;
             }
 
@@ -2080,6 +2680,7 @@ Te enviaré un recordatorio el día anterior.
                                     </button>
                                 )}
                                 <button onClick={() => setView('calendario-turnos')} className="px-4 py-2 bg-green-50 text-green-600 rounded-lg text-sm">📅 Turnos</button>
+                                <button onClick={() => setView('analisis')} className="px-4 py-2 bg-purple-50 text-purple-600 rounded-lg text-sm">📊 Análisis</button>
                                 <button onClick={() => setView('historia-ig')} className="px-4 py-2 bg-pink-50 text-pink-600 rounded-lg text-sm">📸 Historia IG</button>
                                 <button onClick={() => setView('config')} className="px-4 py-2 bg-blue-50 rounded-lg text-sm">⚙️ Config</button>
                                 <button onClick={() => setView('client')} className="px-4 py-2 bg-gray-100 rounded-lg text-sm">Cliente</button>
