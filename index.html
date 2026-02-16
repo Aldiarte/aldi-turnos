@@ -682,6 +682,7 @@ Te enviaré un recordatorio el día anterior.
             const ingresosPorMes = () => {
                 const meses = {};
                 registrosFiltrados.forEach(r => {
+                    if (!r.fecha || typeof r.fecha !== 'string') return;
                     const mes = r.fecha.substring(0, 7);
                     meses[mes] = (meses[mes] || 0) + r.importe;
                 });
@@ -726,7 +727,31 @@ Te enviaré un recordatorio el día anterior.
                         
                         const nuevos = rows.map(row => {
                             // Mapear columnas flexiblemente
-                            const fecha = row.FECHA || row.Fecha || row.fecha || '';
+                            let fecha = row.FECHA || row.Fecha || row.fecha || '';
+                            
+                            // Si la fecha es un número de Excel, convertirla
+                            if (typeof fecha === 'number') {
+                                const excelEpoch = new Date(1900, 0, 1);
+                                const dias = fecha - 2; // Excel cuenta desde 1900-01-01 con bug de 1900 leap year
+                                const fechaObj = new Date(excelEpoch.getTime() + dias * 24 * 60 * 60 * 1000);
+                                const y = fechaObj.getFullYear();
+                                const m = String(fechaObj.getMonth() + 1).padStart(2, '0');
+                                const d = String(fechaObj.getDate()).padStart(2, '0');
+                                fecha = `${y}-${m}-${d}`;
+                            }
+                            // Si la fecha es un string tipo "DD/MM/YYYY" o similar, convertirla
+                            else if (typeof fecha === 'string' && fecha.includes('/')) {
+                                const partes = fecha.split('/');
+                                if (partes.length === 3) {
+                                    // Asumir DD/MM/YYYY
+                                    const d = partes[0].padStart(2, '0');
+                                    const m = partes[1].padStart(2, '0');
+                                    const y = partes[2];
+                                    fecha = `${y}-${m}-${d}`;
+                                }
+                            }
+                            // Si la fecha ya está en formato YYYY-MM-DD, dejarla así
+                            
                             const clienta = row.CLIENTE || row.Cliente || row.Clienta || row.clienta || '';
                             const servicio = row.SERVICIO || row.Servicio || row.Servicios || row.servicios || '';
                             const precio = parseFloat(row.PRECIO || row.Precio || row.Importe || row.importe) || 0;
@@ -747,7 +772,19 @@ Te enviaré un recordatorio el día anterior.
                                 normalizado: normalizado,
                                 fechaCreacion: new Date().toISOString()
                             };
-                        }).filter(r => r.fecha && r.importe > 0); // Solo requiere fecha y precio
+                        }).filter(r => {
+                            // Validar que tenga fecha e importe
+                            if (!r.fecha || r.importe <= 0) return false;
+                            
+                            // Validar formato de fecha YYYY-MM-DD
+                            const regexFecha = /^\d{4}-\d{2}-\d{2}$/;
+                            if (!regexFecha.test(r.fecha)) {
+                                console.warn('Fecha con formato inválido:', r.fecha);
+                                return false;
+                            }
+                            
+                            return true;
+                        });
                         
                         if (nuevos.length > 0) {
                             const sinNormalizar = nuevos.filter(r => !r.normalizado).length;
@@ -1018,7 +1055,11 @@ Te enviaré un recordatorio el día anterior.
                                             <tbody>
                                                 {registrosFiltrados.map(r => (
                                                     <tr key={r.id} className="border-t hover:bg-gray-50">
-                                                        <td className="p-3 text-sm">{new Date(r.fecha).toLocaleDateString('es-AR')}</td>
+                                                        <td className="p-3 text-sm">{r.fecha ? (() => {
+                                                            const [y, m, d] = r.fecha.split('-').map(Number);
+                                                            const fecha = new Date(y, m - 1, d);
+                                                            return fecha.toLocaleDateString('es-AR');
+                                                        })() : 'Sin fecha'}</td>
                                                         <td className="p-3 text-sm font-medium">{r.clienta}</td>
                                                         <td className="p-3 text-sm text-gray-600">{r.servicios.join(', ')}</td>
                                                         <td className="p-3 text-sm font-bold text-green-600">${r.importe}</td>
