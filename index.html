@@ -452,27 +452,54 @@ Te enviaré un recordatorio el día anterior.
 
         // GENERADOR DE HISTORIAS PARA INSTAGRAM
         function GeneradorHistoriaIG({ reservas, horarios, setView }) {
-            const [sucursalId, setSucursalId] = useState(1);
+            // Cargar configuración guardada
+            const cargarConfig = () => {
+                try {
+                    const guardado = localStorage.getItem('historiaIGConfig');
+                    return guardado ? JSON.parse(guardado) : null;
+                } catch {
+                    return null;
+                }
+            };
+            
+            const configGuardada = cargarConfig();
+            
+            const [sucursalId, setSucursalId] = useState(configGuardada?.sucursalId || 1);
             const [fechaInicio, setFechaInicio] = useState(() => {
+                if (configGuardada?.fechaInicio) return configGuardada.fechaInicio;
                 const hoy = new Date();
                 return hoy.toISOString().split('T')[0];
             });
             const [fechaFin, setFechaFin] = useState(() => {
+                if (configGuardada?.fechaFin) return configGuardada.fechaFin;
                 const fin = new Date();
                 fin.setDate(fin.getDate() + 7);
                 return fin.toISOString().split('T')[0];
             });
-            const [backgroundIndex, setBackgroundIndex] = useState(0);
-            const [opacidad, setOpacidad] = useState(60);
+            const [backgroundIndex, setBackgroundIndex] = useState(configGuardada?.backgroundIndex || 0);
+            const [opacidad, setOpacidad] = useState(configGuardada?.opacidad || 60);
             
-            // Biblioteca de backgrounds - estado para poder modificar
-            const [backgrounds, setBackgrounds] = useState([
+            // Biblioteca de backgrounds - cargar guardados
+            const [backgrounds, setBackgrounds] = useState(configGuardada?.backgrounds || [
                 'https://images.unsplash.com/photo-1604654894610-df63bc536371?w=1080&h=1920&fit=crop',
                 'https://images.unsplash.com/photo-1610992015732-2449b76344bc?w=1080&h=1920&fit=crop',
                 'https://images.unsplash.com/photo-1519014816548-bf5fe059798b?w=1080&h=1920&fit=crop',
                 'https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=1080&h=1920&fit=crop',
                 'https://images.unsplash.com/photo-1599948128020-9a44cd7b0206?w=1080&h=1920&fit=crop',
             ]);
+            
+            // Guardar configuración cuando cambia
+            useEffect(() => {
+                const config = {
+                    sucursalId,
+                    fechaInicio,
+                    fechaFin,
+                    backgroundIndex,
+                    opacidad,
+                    backgrounds
+                };
+                localStorage.setItem('historiaIGConfig', JSON.stringify(config));
+            }, [sucursalId, fechaInicio, fechaFin, backgroundIndex, opacidad, backgrounds]);
             
             // Subir fondo personalizado
             const subirFondo = (e) => {
@@ -481,7 +508,8 @@ Te enviaré un recordatorio el día anterior.
                 
                 const reader = new FileReader();
                 reader.onload = (event) => {
-                    setBackgrounds([...backgrounds, event.target.result]);
+                    const nuevosBackgrounds = [...backgrounds, event.target.result];
+                    setBackgrounds(nuevosBackgrounds);
                     setBackgroundIndex(backgrounds.length); // Seleccionar el nuevo fondo
                 };
                 reader.readAsDataURL(file);
@@ -523,7 +551,6 @@ Te enviaré un recordatorio el día anterior.
                     
                     // Obtener horarios configurados para este día
                     const horariosDia = horarios[sucursalId]?.[fechaStr];
-                    console.log(`Día ${fechaStr}:`, horariosDia ? `activo=${horariosDia.activo}, horas=${horariosDia.horas?.length}` : 'NO CONFIGURADO');
                     
                     if (horariosDia && horariosDia.activo) {
                         const horasConfig = horariosDia.horas || [];
@@ -561,7 +588,7 @@ Te enviaré un recordatorio el día anterior.
                     fechaActual.setDate(fechaActual.getDate() + 1);
                 }
                 
-                return dias.slice(0, 4); // Máximo 4 días para que quepan con buen espaciado
+                return dias; // Mostrar todos los días del rango seleccionado
             };
             
             const dias = generarDias();
@@ -621,10 +648,11 @@ Te enviaré un recordatorio el día anterior.
                     
                     // DÍAS Y HORARIOS
                     let y = 350;
-                    const espacioEntreDias = 250; // Espacio fijo entre cada día
-                    const maxDias = Math.min(dias.length, 4); // Máximo 4 días
+                    const totalDias = dias.length;
+                    const espacioDisponible = 1400; // Espacio total disponible (desde y=350 hasta footer=1750)
+                    const espacioEntreDias = Math.min(250, Math.floor(espacioDisponible / (totalDias + 1))); // Dinámico
                     
-                    for (let d = 0; d < maxDias; d++) {
+                    for (let d = 0; d < totalDias; d++) {
                         const dia = dias[d];
                         
                         // Nombre del día
@@ -670,7 +698,7 @@ Te enviaré un recordatorio el día anterior.
                             y += 65;
                         });
                         
-                        // Espacio para el siguiente día (fijo)
+                        // Espacio para el siguiente día (dinámico)
                         y = 350 + (d + 1) * espacioEntreDias;
                     }
                     
@@ -728,9 +756,9 @@ Te enviaré un recordatorio el día anterior.
                                         ⚠️ No hay horarios configurados para este rango de fechas
                                     </div>
                                 )}
-                                {dias.length > 4 && (
+                                {dias.length > 6 && (
                                     <div className="bg-blue-50 border-l-4 border-blue-500 p-3 text-sm text-blue-800">
-                                        ℹ️ Solo se mostrarán los primeros 4 días (mejor espaciado)
+                                        ℹ️ Con muchos días, el espaciado se ajusta automáticamente. Recomendamos máximo 5 días para mejor legibilidad.
                                     </div>
                                 )}
                                 
