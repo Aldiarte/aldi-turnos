@@ -1200,6 +1200,7 @@ Te enviaré un recordatorio el día anterior.
                     setView={setView}
                     isLoggedIn={isLoggedIn}
                     setIsLoggedIn={setIsLoggedIn}
+                    password={password}
                 />;
             }
 
@@ -1881,7 +1882,7 @@ Te enviaré un recordatorio el día anterior.
         }
 
         // ADMIN PANEL
-        function AdminPanel({ reservas, guardarReservas, enviarLinkPago, enviarRecordatorio, enviarConfirmacion, setView, isLoggedIn, setIsLoggedIn }) {
+        function AdminPanel({ reservas, guardarReservas, enviarLinkPago, enviarRecordatorio, enviarConfirmacion, setView, isLoggedIn, setIsLoggedIn, password }) {
             const [pass, setPass] = useState('');
             const [filtro, setFiltro] = useState('todas'); // todas, pendientes, conComprobante, confirmadas
             const [ultimoChequeo, setUltimoChequeo] = useState(Date.now());
