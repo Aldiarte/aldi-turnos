@@ -2166,6 +2166,8 @@ Te enviaré un recordatorio el día anterior.
         function ConfigPanel({ servicios, setServicios, señaFija, setSeñaFija, linkMPago, setLinkMPago, telAdmin, setTelAdmin, horarios, setHorarios, password, setPassword, guardarConfig, setView, isLoggedIn, setIsLoggedIn }) {
             const [pass, setPass] = useState('');
             const [guardado, setGuardado] = useState(false);
+            const [cambiosSinGuardar, setCambiosSinGuardar] = useState(false);
+            const [intentandoSalir, setIntentandoSalir] = useState(false);
             const [diasSeleccionados, setDiasSeleccionados] = useState({}); // {sucursalId: 'YYYY-MM-DD'}
 
             if (!isLoggedIn) {
@@ -2191,18 +2193,26 @@ Te enviaré un recordatorio el día anterior.
                 );
             }
 
+            // Detectar cambios en los datos
+            useEffect(() => {
+                setCambiosSinGuardar(true);
+            }, [servicios, señaFija, linkMPago, telAdmin, horarios]);
+
             const agregarServicio = () => {
                 const nuevoId = Math.max(...servicios.map(s => s.id)) + 1;
                 setServicios([...servicios, { id: nuevoId, nombre: 'Nuevo Servicio', duracion: 60, precio: 0 }]);
+                setCambiosSinGuardar(true);
             };
 
             const editarServicio = (id, campo, valor) => {
                 setServicios(servicios.map(s => s.id === id ? {...s, [campo]: valor} : s));
+                setCambiosSinGuardar(true);
             };
 
             const eliminarServicio = (id) => {
                 if (confirm('¿Eliminar este servicio?')) {
                     setServicios(servicios.filter(s => s.id !== id));
+                    setCambiosSinGuardar(true);
                 }
             };
 
@@ -2221,6 +2231,7 @@ Te enviaré un recordatorio el día anterior.
             const guardar = () => {
                 try {
                     guardarConfig();
+                    setCambiosSinGuardar(false);
                     setGuardado(true);
                     setTimeout(() => setGuardado(false), 3000);
                 } catch (error) {
@@ -2228,13 +2239,68 @@ Te enviaré un recordatorio el día anterior.
                     console.error('Error guardando:', error);
                 }
             };
+            
+            // Función para intentar salir
+            const intentarSalir = () => {
+                if (cambiosSinGuardar) {
+                    setIntentandoSalir(true);
+                } else {
+                    setView('admin');
+                }
+            };
+            
+            // Descartar cambios y salir
+            const descartarYSalir = () => {
+                setCambiosSinGuardar(false);
+                setIntentandoSalir(false);
+                setView('admin');
+            };
 
             return (
                 <div className="min-h-screen bg-gray-100">
+                    {/* Modal de confirmación al salir */}
+                    {intentandoSalir && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
+                                <div className="text-6xl mb-4 text-center">⚠️</div>
+                                <h2 className="text-2xl font-bold mb-4 text-center">Cambios sin guardar</h2>
+                                <p className="text-gray-600 mb-6 text-center">
+                                    Tenés cambios que no guardaste. ¿Qué querés hacer?
+                                </p>
+                                <div className="space-y-3">
+                                    <button
+                                        onClick={() => {
+                                            guardar();
+                                            setIntentandoSalir(false);
+                                            setTimeout(() => setView('admin'), 500);
+                                        }}
+                                        className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700">
+                                        💾 Guardar y salir
+                                    </button>
+                                    <button
+                                        onClick={descartarYSalir}
+                                        className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700">
+                                        🗑️ Descartar cambios y salir
+                                    </button>
+                                    <button
+                                        onClick={() => setIntentandoSalir(false)}
+                                        className="w-full bg-gray-200 py-3 rounded-lg font-semibold hover:bg-gray-300">
+                                        ↩️ Seguir editando
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                
                     <header className="bg-white shadow p-4">
                         <div className="max-w-5xl mx-auto flex justify-between items-center">
                             <h1 className="text-xl font-bold">Configuración</h1>
-                            <button onClick={() => setView('admin')} className="px-4 py-2 bg-gray-100 rounded-lg">Volver</button>
+                            <div className="flex items-center gap-3">
+                                {cambiosSinGuardar && (
+                                    <span className="text-orange-600 font-semibold text-sm">● Sin guardar</span>
+                                )}
+                                <button onClick={intentarSalir} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">Volver</button>
+                            </div>
                         </div>
                     </header>
 
@@ -2254,7 +2320,10 @@ Te enviaré un recordatorio el día anterior.
                                     <input type="number"
                                         className="w-full p-3 border-2 rounded-lg"
                                         value={señaFija}
-                                        onChange={(e) => setSeñaFija(parseInt(e.target.value) || 0)}
+                                        onChange={(e) => {
+                                            setSeñaFija(parseInt(e.target.value) || 0);
+                                            setCambiosSinGuardar(true);
+                                        }}
                                     />
                                 </div>
                                 <div>
@@ -2262,7 +2331,10 @@ Te enviaré un recordatorio el día anterior.
                                     <input type="url"
                                         className="w-full p-3 border-2 rounded-lg"
                                         value={linkMPago}
-                                        onChange={(e) => setLinkMPago(e.target.value)}
+                                        onChange={(e) => {
+                                            setLinkMPago(e.target.value);
+                                            setCambiosSinGuardar(true);
+                                        }}
                                         placeholder="https://mpago.la/..."
                                     />
                                 </div>
@@ -2271,7 +2343,10 @@ Te enviaré un recordatorio el día anterior.
                                     <input type="tel"
                                         className="w-full p-3 border-2 rounded-lg font-mono"
                                         value={telAdmin}
-                                        onChange={(e) => setTelAdmin(e.target.value)}
+                                        onChange={(e) => {
+                                            setTelAdmin(e.target.value);
+                                            setCambiosSinGuardar(true);
+                                        }}
                                         placeholder="5492920601373"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">
