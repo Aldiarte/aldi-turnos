@@ -519,6 +519,9 @@ Te enviaré un recordatorio el día anterior.
                 notas: ''
             });
             
+            // Estado para selección múltiple
+            const [seleccionados, setSeleccionados] = useState([]);
+            
             // Cargar desde Firebase
             useEffect(() => {
                 const cargar = async () => {
@@ -580,6 +583,117 @@ Te enviaré un recordatorio el día anterior.
                 guardarRegistros(actualizados);
                 setEditando(null);
                 alert('✅ Registro actualizado');
+            };
+            
+            // Seleccionar/Deseleccionar registro
+            const toggleSeleccion = (id) => {
+                if (seleccionados.includes(id)) {
+                    setSeleccionados(seleccionados.filter(i => i !== id));
+                } else {
+                    setSeleccionados([...seleccionados, id]);
+                }
+            };
+            
+            // Seleccionar todos filtrados
+            const seleccionarTodos = () => {
+                setSeleccionados(registrosFiltrados.map(r => r.id));
+            };
+            
+            // Deseleccionar todos
+            const deseleccionarTodos = () => {
+                setSeleccionados([]);
+            };
+            
+            // Eliminar seleccionados
+            const eliminarSeleccionados = async () => {
+                if (seleccionados.length === 0) {
+                    alert('⚠️ No hay registros seleccionados');
+                    return;
+                }
+                
+                if (confirm(`¿Eliminar ${seleccionados.length} registro(s)?\n\n⚠️ Esta acción NO se puede deshacer.`)) {
+                    const nuevos = registros.filter(r => !seleccionados.includes(r.id));
+                    await guardarRegistros(nuevos);
+                    setSeleccionados([]);
+                    alert(`✅ ${seleccionados.length} registro(s) eliminado(s)`);
+                }
+            };
+            
+            // Eliminar todos los registros
+            const eliminarTodos = async () => {
+                if (registros.length === 0) {
+                    alert('⚠️ No hay registros para eliminar');
+                    return;
+                }
+                
+                if (confirm(`⚠️ ¿ELIMINAR TODOS LOS ${registros.length} REGISTROS?\n\nEsta acción NO se puede deshacer.\n\nSe perderá TODO el historial.`)) {
+                    if (confirm('¿Estás completamente seguro?\n\nÚltima advertencia antes de borrar todo.')) {
+                        await guardarRegistros([]);
+                        setSeleccionados([]);
+                        alert('✅ Todos los registros eliminados');
+                    }
+                }
+            };
+
+            
+            // Funciones de eliminación
+            const eliminarUno = (id) => {
+                if (confirm('¿Eliminar este registro?\n\nNo se puede deshacer.')) {
+                    guardarRegistros(registros.filter(r => r.id !== id));
+                    setSeleccionados(seleccionados.filter(s => s !== id));
+                }
+            };
+            
+            const eliminarSeleccionados = () => {
+                if (seleccionados.length === 0) {
+                    alert('⚠️ No hay registros seleccionados');
+                    return;
+                }
+                if (confirm(`¿Eliminar ${seleccionados.length} registros seleccionados?\n\n⚠️ Esta acción NO se puede deshacer.`)) {
+                    guardarRegistros(registros.filter(r => !seleccionados.includes(r.id)));
+                    setSeleccionados([]);
+                    alert(`✅ ${seleccionados.length} registros eliminados`);
+                }
+            };
+            
+            const eliminarTodos = () => {
+                if (confirm(`⚠️ ¿ELIMINAR TODOS LOS ${registros.length} REGISTROS?\n\nEsto eliminará TODA la base de datos de análisis.\n\n¡Esta acción NO se puede deshacer!`)) {
+                    if (confirm('¿Estás COMPLETAMENTE seguro?\n\nSe eliminarán TODOS los registros permanentemente.')) {
+                        guardarRegistros([]);
+                        setSeleccionados([]);
+                        alert('✅ Todos los registros eliminados');
+                    }
+                }
+            };
+            
+            const eliminarPendientes = () => {
+                const pendientes = registros.filter(r => !r.normalizado);
+                if (pendientes.length === 0) {
+                    alert('⚠️ No hay registros pendientes de normalizar');
+                    return;
+                }
+                if (confirm(`¿Eliminar los ${pendientes.length} registros pendientes de normalizar?\n\n⚠️ Esta acción NO se puede deshacer.`)) {
+                    guardarRegistros(registros.filter(r => r.normalizado));
+                    setSeleccionados([]);
+                    alert(`✅ ${pendientes.length} registros pendientes eliminados`);
+                }
+            };
+            
+            // Toggle selección
+            const toggleSeleccion = (id) => {
+                if (seleccionados.includes(id)) {
+                    setSeleccionados(seleccionados.filter(s => s !== id));
+                } else {
+                    setSeleccionados([...seleccionados, id]);
+                }
+            };
+            
+            const toggleTodos = () => {
+                if (seleccionados.length === registrosFiltrados.length) {
+                    setSeleccionados([]);
+                } else {
+                    setSeleccionados(registrosFiltrados.map(r => r.id));
+                }
             };
             
             // Agregar registro
@@ -648,8 +762,8 @@ Te enviaré un recordatorio el día anterior.
             const registrosFiltrados = registros.filter(r => {
                 if (filtros.fechaInicio && r.fecha < filtros.fechaInicio) return false;
                 if (filtros.fechaFin && r.fecha > filtros.fechaFin) return false;
-                if (filtros.clienta && !r.clienta.toLowerCase().includes(filtros.clienta.toLowerCase())) return false;
-                if (filtros.servicio && !r.servicios.some(s => s.toLowerCase().includes(filtros.servicio.toLowerCase()))) return false;
+                if (filtros.clienta && r.clienta && !r.clienta.toLowerCase().includes(filtros.clienta.toLowerCase())) return false;
+                if (filtros.servicio && r.servicios && Array.isArray(r.servicios) && !r.servicios.some(s => s && s.toLowerCase().includes(filtros.servicio.toLowerCase()))) return false;
                 if (filtros.metodoPago && r.metodoPago !== filtros.metodoPago) return false;
                 if (filtros.sucursal && r.sucursal !== filtros.sucursal) return false;
                 if (filtros.estado === 'normalizado' && !r.normalizado) return false;
@@ -659,21 +773,23 @@ Te enviaré un recordatorio el día anterior.
             
             // Estadísticas
             const stats = {
-                totalIngresos: registrosFiltrados.reduce((sum, r) => sum + r.importe, 0),
+                totalIngresos: registrosFiltrados.reduce((sum, r) => sum + (r.importe || 0), 0),
                 cantidadServicios: registrosFiltrados.length,
                 ticketPromedio: registrosFiltrados.length > 0 
-                    ? registrosFiltrados.reduce((sum, r) => sum + r.importe, 0) / registrosFiltrados.length 
+                    ? registrosFiltrados.reduce((sum, r) => sum + (r.importe || 0), 0) / registrosFiltrados.length 
                     : 0,
-                clientasUnicas: [...new Set(registrosFiltrados.map(r => r.clienta))].length
+                clientasUnicas: [...new Set(registrosFiltrados.map(r => r.clienta).filter(c => c))].length
             };
             
             // Servicios más vendidos
             const serviciosMasVendidos = () => {
                 const conteo = {};
                 registrosFiltrados.forEach(r => {
-                    r.servicios.forEach(s => {
-                        conteo[s] = (conteo[s] || 0) + 1;
-                    });
+                    if (r.servicios && Array.isArray(r.servicios)) {
+                        r.servicios.forEach(s => {
+                            if (s) conteo[s] = (conteo[s] || 0) + 1;
+                        });
+                    }
                 });
                 return Object.entries(conteo).sort((a, b) => b[1] - a[1]).slice(0, 5);
             };
@@ -682,8 +798,10 @@ Te enviaré un recordatorio el día anterior.
             const ingresosPorMes = () => {
                 const meses = {};
                 registrosFiltrados.forEach(r => {
-                    const mes = r.fecha.substring(0, 7);
-                    meses[mes] = (meses[mes] || 0) + r.importe;
+                    if (r.fecha) {
+                        const mes = r.fecha.substring(0, 7);
+                        meses[mes] = (meses[mes] || 0) + (r.importe || 0);
+                    }
                 });
                 return Object.entries(meses).sort((a, b) => a[0].localeCompare(b[0]));
             };
@@ -711,26 +829,97 @@ Te enviaré un recordatorio el día anterior.
                 }
             };
             
-            // Importar desde Excel
+                        // Importar desde Excel
             const importarExcel = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
                 
                 const reader = new FileReader();
-                reader.onload = (event) => {
+                reader.onload = async (event) => {
                     try {
                         const data = new Uint8Array(event.target.result);
-                        const workbook = XLSX.read(data, {type: 'array'});
+                        const workbook = XLSX.read(data, {type: 'array', cellDates: true});
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const rows = XLSX.utils.sheet_to_json(firstSheet);
+                        const rows = XLSX.utils.sheet_to_json(firstSheet, {raw: false});
                         
                         const nuevos = rows.map(row => {
-                            // Mapear columnas flexiblemente
-                            const fecha = row.FECHA || row.Fecha || row.fecha || '';
+                            // Mapear columnas
+                            let fechaRaw = row.FECHA || row.Fecha || row.fecha || '';
                             const clienta = row.CLIENTE || row.Cliente || row.Clienta || row.clienta || '';
                             const servicio = row.SERVICIO || row.Servicio || row.Servicios || row.servicios || '';
                             const precio = parseFloat(row.PRECIO || row.Precio || row.Importe || row.importe) || 0;
                             const pago = (row.PAGO || row.Pago || row['Método Pago'] || row.metodoPago || 'efectivo').toString().toLowerCase();
+                            
+                            // PARSEAR FECHA - Varios formatos
+                            let fecha = '';
+                            if (fechaRaw) {
+                                try {
+                                    // Si viene como Date object
+                                    if (fechaRaw instanceof Date) {
+                                        fecha = fechaRaw.toISOString().split('T')[0];
+                                    }
+                                    // Si es string DD/MM/YYYY
+                                    else if (typeof fechaRaw === 'string' && fechaRaw.includes('/')) {
+                                        const partes = fechaRaw.split('/');
+                                        if (partes.length === 3) {
+                                            let dia = partes[0].padStart(2, '0');
+                                            let mes = partes[1].padStart(2, '0');
+                                            let anio = partes[2];
+                                            if (anio.length === 2) anio = '20' + anio;
+                                            fecha = `${anio}-${mes}-${dia}`;
+                                        }
+                                    }
+                                    // Si es string YYYY-MM-DD
+                                    else if (typeof fechaRaw === 'string' && fechaRaw.includes('-')) {
+                                        fecha = fechaRaw;
+                                    }
+                                    // Si es string parseable
+                                    else if (typeof fechaRaw === 'string') {
+                                        const d = new Date(fechaRaw);
+                                        if (!isNaN(d.getTime())) {
+                                            fecha = d.toISOString().split('T')[0];
+                                        }
+                                    }
+                                    // Si es número (serial de Excel)
+                                    else if (typeof fechaRaw === 'number') {
+                                        const d = new Date((fechaRaw - 25569) * 86400 * 1000);
+                                        fecha = d.toISOString().split('T')[0];
+                                    }
+                                } catch (e) {
+                                    console.error('Error parseando fecha:', fechaRaw, e);
+                                }
+                            }
+                            
+                            const normalizado = !!(clienta && servicio);
+                            
+                            return {
+                                id: Date.now() + Math.random(),
+                                fecha: fecha,
+                                clienta: clienta,
+                                servicios: servicio ? servicio.toString().split(',').map(s => s.trim()).filter(s => s) : [],
+                                importe: precio,
+                                metodoPago: pago,
+                                sucursal: row.Sucursal || row.sucursal || 'Bahía Blanca',
+                                notas: row.Notas || row.notas || 'Importado',
+                                normalizado: normalizado,
+                                fechaCreacion: new Date().toISOString()
+                            };
+                        }).filter(r => r.fecha && r.importe > 0);
+                        
+                        if (nuevos.length > 0) {
+                            const sinNormalizar = nuevos.filter(r => !r.normalizado).length;
+                            const todosRegistros = [...registros, ...nuevos];
+                            await guardarRegistros(todosRegistros);
+                            alert(`✅ ${nuevos.length} registros importados\n\n${sinNormalizar > 0 ? `⚠️ ${sinNormalizar} pendientes de normalizar` : '✅ Todos normalizados'}`);
+                        } else {} else {
+                                            fecha = new Date(fechaRaw).toISOString().split('T')[0];
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.error('Error parseando fecha:', fechaRaw, e);
+                                    fecha = '';
+                                }
+                            }
                             
                             // Determinar si está normalizado (tiene cliente Y servicio)
                             const normalizado = !!(clienta && servicio);
@@ -1043,23 +1232,69 @@ Te enviaré un recordatorio el día anterior.
                         
                         {vistaActual === 'registros' && (
                             <>
-                                <div className="flex gap-2 flex-wrap">
-                                    <button onClick={() => setMostrarFormulario(!mostrarFormulario)}
-                                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-                                        + Agregar Registro
-                                    </button>
-                                    <button onClick={importarDesdeReservas}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                                        📥 Importar Reservas
-                                    </button>
-                                    <button onClick={exportarExcel}
-                                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
-                                        📤 Exportar Excel
-                                    </button>
-                                    <label className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 cursor-pointer">
-                                        📂 Importar Excel
-                                        <input type="file" accept=".xlsx,.xls" onChange={importarExcel} className="hidden" />
-                                    </label>
+                                <div className="flex gap-2 flex-wrap items-center justify-between">
+                                    <div className="flex gap-2 flex-wrap">
+                                        <button onClick={() => setMostrarFormulario(!mostrarFormulario)}
+                                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                                            + Agregar Registro
+                                        </button>
+                                        <button onClick={importarDesdeReservas}
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                            📥 Importar Reservas
+                                        </button>
+                                        <button onClick={exportarExcel}
+                                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                                            📤 Exportar Excel
+                                        </button>
+                                        <label className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 cursor-pointer">
+                                            📂 Importar Excel
+                                            <input type="file" accept=".xlsx,.xls" onChange={importarExcel} className="hidden" />
+                                        </label>
+                                    </div>
+                                    
+                                    <div className="flex gap-2 items-center">
+                                        {seleccionados.length > 0 ? (
+                                            <>
+                                                <span className="text-sm font-medium text-gray-600">{seleccionados.length} seleccionado(s)</span>
+                                                <button onClick={deseleccionarTodos}
+                                                    className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm">
+                                                    Deseleccionar
+                                                </button>
+                                                <button onClick={eliminarSeleccionados}
+                                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+                                                    🗑️ Eliminar Seleccionados
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                {registrosFiltrados.length > 0 && (
+                                                    <button onClick={seleccionarTodos}
+                                                        className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm">
+                                                        ☑️ Seleccionar Todos
+                                                    </button>
+                                                )}
+                                                {registros.length > 0 && (
+                                                    <button onClick={eliminarTodos}
+                                                        className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200">
+                                                        🗑️ Eliminar Todo
+                                                    </button>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                                                🗑️ Eliminar {seleccionados.length} seleccionados
+                                            </button>
+                                        )}
+                                        <button onClick={eliminarPendientes}
+                                            className="px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200">
+                                            🗑️ Eliminar Pendientes
+                                        </button>
+                                        <button onClick={eliminarTodos}
+                                            className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200">
+                                            🗑️ Eliminar Todo
+                                        </button>
+                                    </div>
                                 </div>
                                 
                                 {mostrarFormulario && (
@@ -1137,6 +1372,14 @@ Te enviaré un recordatorio el día anterior.
                                         <table className="w-full">
                                             <thead className="bg-gray-100">
                                                 <tr>
+                                                    <th className="p-3 text-left text-sm font-semibold w-12">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={seleccionados.length === registrosFiltrados.length && registrosFiltrados.length > 0}
+                                                            onChange={(e) => e.target.checked ? seleccionarTodos() : deseleccionarTodos()}
+                                                            className="w-4 h-4 cursor-pointer"
+                                                            title="Seleccionar todos" />
+                                                    </th>
                                                     <th className="p-3 text-left text-sm font-semibold w-24">Estado</th>
                                                     <th className="p-3 text-left text-sm font-semibold">Fecha</th>
                                                     <th className="p-3 text-left text-sm font-semibold">Clienta</th>
@@ -1149,7 +1392,14 @@ Te enviaré un recordatorio el día anterior.
                                             </thead>
                                             <tbody>
                                                 {registrosFiltrados.map(r => (
-                                                    <tr key={r.id} className="border-t hover:bg-gray-50 transition">
+                                                    <tr key={r.id} className={`border-t hover:bg-gray-50 transition ${seleccionados.includes(r.id) ? 'bg-blue-50' : ''}`}>
+                                                        <td className="p-3 text-sm">
+                                                            <input 
+                                                                type="checkbox"
+                                                                checked={seleccionados.includes(r.id)}
+                                                                onChange={() => toggleSeleccion(r.id)}
+                                                                className="w-4 h-4 cursor-pointer" />
+                                                        </td>
                                                         <td className="p-3 text-sm">
                                                             {r.normalizado ? (
                                                                 <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">✅ OK</span>
@@ -1171,12 +1421,10 @@ Te enviaré un recordatorio el día anterior.
                                                                     title="Editar">
                                                                     ✏️
                                                                 </button>
-                                                                <button onClick={() => {
-                                                                    if (confirm('¿Eliminar este registro?\n\nNo se puede deshacer.')) {
-                                                                        guardarRegistros(registros.filter(reg => reg.id !== r.id));
-                                                                    }
-                                                                }} className="text-red-600 hover:text-red-800 font-semibold text-lg"
-                                                                title="Eliminar">
+                                                                <button 
+                                                                    onClick={() => eliminarUno(r.id)}
+                                                                    className="text-red-600 hover:text-red-800 font-semibold text-lg"
+                                                                    title="Eliminar">
                                                                     🗑️
                                                                 </button>
                                                             </div>
