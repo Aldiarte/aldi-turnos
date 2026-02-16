@@ -649,8 +649,8 @@ Te enviaré un recordatorio el día anterior.
                     // DÍAS Y HORARIOS
                     let y = 350;
                     const totalDias = dias.length;
-                    const espacioDisponible = 1400; // Espacio total disponible (desde y=350 hasta footer=1750)
-                    const espacioEntreDias = Math.min(250, Math.floor(espacioDisponible / (totalDias + 1))); // Dinámico
+                    const espacioDisponible = 1500; // Más espacio disponible (hasta y=1850)
+                    const espacioEntreDias = Math.min(280, Math.floor(espacioDisponible / totalDias)); // Más separación
                     
                     for (let d = 0; d < totalDias; d++) {
                         const dia = dias[d];
@@ -702,17 +702,15 @@ Te enviaré un recordatorio el día anterior.
                         y = 350 + (d + 1) * espacioEntreDias;
                     }
                     
-                    // FOOTER - Espacio reservado para que tu novia agregue el enlace manualmente
-                    const footerY = 1750;
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-                    ctx.fillRect(100, footerY, width - 200, 140);
+                    // FOOTER - Espacio reservado (más compacto)
+                    const footerY = 1850;
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                    ctx.fillRect(150, footerY, width - 300, 50);
                     
-                    // Placeholder para el enlace (tu novia lo agregará con sticker de IG)
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-                    ctx.font = 'bold 38px Arial';
-                    ctx.fillText('👆', width / 2, footerY + 50);
-                    ctx.font = '32px Arial';
-                    ctx.fillText('(Agregar link con sticker)', width / 2, footerY + 100);
+                    // Placeholder más discreto
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                    ctx.font = '28px Arial';
+                    ctx.fillText('(Espacio para sticker de enlace)', width / 2, footerY + 35);
                 };
             }, [sucursalId, fechaInicio, fechaFin, backgroundIndex, opacidad, dias]);
             
@@ -805,7 +803,7 @@ Te enviaré un recordatorio el día anterior.
                                 
                                 <div className="bg-blue-50 border-l-4 border-blue-500 p-4 text-sm">
                                     <p className="text-blue-900">
-                                        <strong>💡 Tip:</strong> El espacio del footer está reservado para que agregues el enlace manualmente con un sticker de Instagram. Los corazones ❤️ muestran horarios ocupados. Máximo 4 días por historia.
+                                        <strong>💡 Tip:</strong> Los corazones ❤️ muestran turnos ocupados (se ve el horario detrás). Al publicar en Instagram, agregá un sticker de enlace en el footer. Tu configuración (fechas, fondos) se guarda automáticamente.
                                     </p>
                                 </div>
                             </div>
