@@ -523,6 +523,8 @@ Te enviaré un recordatorio el día anterior.
                     
                     // Obtener horarios configurados para este día
                     const horariosDia = horarios[sucursalId]?.[fechaStr];
+                    console.log(`Día ${fechaStr}:`, horariosDia ? `activo=${horariosDia.activo}, horas=${horariosDia.horas?.length}` : 'NO CONFIGURADO');
+                    
                     if (horariosDia && horariosDia.activo) {
                         const horasConfig = horariosDia.horas || [];
                         
