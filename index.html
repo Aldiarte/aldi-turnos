@@ -1185,18 +1185,26 @@ Ingresá el número (1-6):`;
                                     
                                     <div className="bg-white p-6 rounded-xl shadow">
                                         <h3 className="font-bold mb-4">📈 Ingresos por Mes</h3>
-                                        {ingresosPorMes().length > 0 ? ingresosPorMes().slice(-6).map(([mes, total]) => (
-                                            <div key={mes} className="mb-3">
-                                                <div className="flex justify-between mb-1">
-                                                    <span className="text-sm font-medium">{mes}</span>
-                                                    <span className="text-sm text-green-600 font-bold">${formatearNumero(total)}</span>
+                                        {(() => {
+                                            const mesesData = ingresosPorMes();
+                                            if (mesesData.length === 0) return <p className="text-gray-500 text-sm">No hay datos para mostrar</p>;
+                                            
+                                            const ultimos6 = mesesData.slice(-6);
+                                            const maxTotal = Math.max(...mesesData.map(m => m[1]));
+                                            
+                                            return ultimos6.map(([mes, total]) => (
+                                                <div key={mes} className="mb-3">
+                                                    <div className="flex justify-between mb-1">
+                                                        <span className="text-sm font-medium">{mes}</span>
+                                                        <span className="text-sm text-green-600 font-bold">${formatearNumero(total)}</span>
+                                                    </div>
+                                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                                        <div className="bg-green-600 h-2 rounded-full" 
+                                                            style={{width: `${(total / maxTotal) * 100}%`}}></div>
+                                                    </div>
                                                 </div>
-                                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                                    <div className="bg-green-600 h-2 rounded-full" 
-                                                        style={{width: `${(total / Math.max(...ingresosPorMes().map(m => m[1]))) * 100}%`}}></div>
-                                                </div>
-                                            </div>
-                                        )) : <p className="text-gray-500 text-sm">No hay datos para mostrar</p>}
+                                            ));
+                                        })()}
                                     </div>
                                 </div>
                             </>
