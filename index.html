@@ -192,6 +192,7 @@
 
             const servs = reserva.servicios.map(s => s.nombre).join('\n• ');
             const total = reserva.servicios.reduce((sum, s) => sum + s.precio, 0);
+            const totalEfectivo = Math.round(total * 0.9); // 10% descuento
             const tel = reserva.cliente.telefono.replace(/\D/g, '');
             
             // Link para confirmar la reserva desde el email
@@ -200,6 +201,7 @@
             
             // Mensaje de WhatsApp de confirmación
             const resto = total - señaFija;
+            const restoEfectivo = totalEfectivo - señaFija;
             const mensajeConfirmacion = `✅ *TURNO CONFIRMADO* ✅
 
 ¡Hola ${reserva.cliente.nombre}! 🎉
@@ -213,9 +215,13 @@ Tu pago fue verificado y tu turno está *100% confirmado* 💖
 
 • ${servs}
 
-💰 Total del servicio: $${total}
+💰 *Precio total del servicio: $${total}*
+💸 *Con 10% descuento efectivo: $${totalEfectivo}*
+
 ✅ Seña pagada: $${señaFija}
-💸 Resto a pagar en el local: $${resto}
+💵 Resto a pagar en el local:
+   • Efectivo: $${restoEfectivo} (10% descuento aplicado)
+   • Otros medios: $${resto}
 
 Te enviaré un recordatorio el día anterior.
 
@@ -870,7 +876,7 @@ Ingresá el número (1-6):`;
                 if (!file) return;
                 
                 const reader = new FileReader();
-                reader.onload = (event) => {
+                reader.onload = async (event) => {
                     try {
                         const data = new Uint8Array(event.target.result);
                         const workbook = XLSX.read(data, {type: 'array'});
@@ -940,8 +946,10 @@ Ingresá el número (1-6):`;
                         
                         if (nuevos.length > 0) {
                             const sinNormalizar = nuevos.filter(r => !r.normalizado).length;
-                            guardarRegistros([...registros, ...nuevos]);
-                            alert(`✅ ${nuevos.length} registros importados\n\n${sinNormalizar > 0 ? `⚠️ ${sinNormalizar} pendientes de normalizar` : '✅ Todos normalizados'}`);
+                            console.log(`Importando ${nuevos.length} registros a Firebase...`);
+                            await guardarRegistros([...registros, ...nuevos]);
+                            console.log('✅ Registros guardados en Firebase');
+                            alert(`✅ ${nuevos.length} registros importados y guardados\n\n${sinNormalizar > 0 ? `⚠️ ${sinNormalizar} pendientes de normalizar` : '✅ Todos normalizados'}`);
                         } else {
                             alert('❌ No se encontraron registros válidos.\n\nVerificá que el Excel tenga columnas: FECHA y PRECIO');
                         }
@@ -1882,7 +1890,15 @@ Ingresá el número (1-6):`;
                         // Cargar configuración
                         const config = await FirebaseDB.get('configuracion');
                         if (config) {
-                            if (config.servicios) setServicios(config.servicios);
+                            if (config.servicios) {
+                                // Ordenar servicios para que "Todavía no me decido" siempre esté al final
+                                const serviciosOrdenados = config.servicios.sort((a, b) => {
+                                    if (a.esIndeciso) return 1;
+                                    if (b.esIndeciso) return -1;
+                                    return a.id - b.id;
+                                });
+                                setServicios(serviciosOrdenados);
+                            }
                             if (config.seña) setSeñaFija(config.seña);
                             if (config.linkMPago) setLinkMPago(config.linkMPago);
                             if (config.telAdmin) setTelAdmin(config.telAdmin);
@@ -2080,6 +2096,7 @@ Ingresá el número (1-6):`;
 
                 const servs = reserva.servicios.map(s => s.nombre).join('\n• ');
                 const total = reserva.servicios.reduce((sum, s) => sum + s.precio, 0);
+                const totalEfectivo = Math.round(total * 0.9); // 10% descuento
                 const tel = reserva.cliente.telefono.replace(/\D/g, '');
                 
                 // Link de WhatsApp con mensaje pre-llenado
@@ -2098,22 +2115,25 @@ Tu turno en *Aldi, arte en uñas* está pre-reservado 🎀
 Servicios:
 • ${servs}
 
-💰 Total: $${total}
+💰 *Precio total: $${total}*
+💸 *Con 10% descuento efectivo: $${totalEfectivo}*
 💵 Seña a pagar: $${señaFija}
 
 ───────────────────
 
 ✅ *PARA CONFIRMAR TU TURNO:*
 
-1️⃣ Pagá la seña de *$${señaFija}* en:
-${linkMPago}
+💳 Transferí la seña de *$${señaFija}* al alias:
+aldi.arte.mp
 
-2️⃣ Subí tu comprobante acá:
+Luego subí tu comprobante acá:
 ${linkComprobante}
 
 ───────────────────
 
 Una vez que revise tu pago, te confirmaré definitivamente tu turno 😊
+
+💡 *La seña se descuenta del total*
 
 ¡Gracias por elegirnos! 💖`;
 
@@ -2149,6 +2169,8 @@ Una vez que revise tu pago, te confirmaré definitivamente tu turno 😊
             const enviarLinkPago = (reserva) => {
                 const tel = reserva.cliente.telefono.replace(/\D/g, '');
                 const servs = reserva.servicios.map(s => `💅 ${s.nombre}`).join('\n');
+                const total = reserva.servicios.reduce((sum, s) => sum + s.precio, 0);
+                const totalEfectivo = Math.round(total * 0.9); // 10% descuento
                 
                 // Link para subir comprobante
                 const baseUrl = window.location.href.split('?')[0];
@@ -2156,22 +2178,27 @@ Una vez que revise tu pago, te confirmaré definitivamente tu turno 😊
                 
                 const mensaje = `¡Hola ${reserva.cliente.nombre}! 👋✨
 
-Para *CONFIRMAR* tu turno:
+Para *CONFIRMAR* tu turno necesitamos una seña de *$${señaFija}*
 
-1️⃣ Pagá la seña de *$${señaFija}* en:
-${linkMPago}
+💳 *Transferencia al alias:*
+aldi.arte.mp
+(Por $${señaFija})
 
-2️⃣ Subí tu comprobante acá:
+Luego subí tu comprobante acá:
 ${linkComprobante}
 
-📋 Tu turno:
+📋 *Tu turno:*
 📍 ${reserva.sucursal.nombre}
 📅 ${new Date(reserva.fecha).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'})}
 ⏰ ${reserva.hora}
 
 ${servs}
 
-💡 La seña se descuenta del total
+💰 *Precios:*
+• Total del servicio: $${total}
+• Con 10% descuento efectivo: $${totalEfectivo}
+
+✅ La seña se descuenta del total
 ¡Te esperamos! 😊💖`;
                 
                 const msgCodificado = encodeURIComponent(mensaje).replace(/%20/g, '+');
@@ -2204,7 +2231,9 @@ ${servs}
                 const tel = reserva.cliente.telefono.replace(/\D/g, '');
                 const servs = reserva.servicios.map(s => `💅 ${s.nombre}`).join('\n');
                 const total = reserva.servicios.reduce((sum, s) => sum + s.precio, 0);
+                const totalEfectivo = Math.round(total * 0.9); // 10% descuento
                 const resto = total - señaFija;
+                const restoEfectivo = totalEfectivo - señaFija;
                 
                 const mensaje = `✅ *TURNO CONFIRMADO* ✅
 
@@ -2219,9 +2248,13 @@ Tu pago fue verificado y tu turno está *100% confirmado* 💖
 
 ${servs}
 
-💰 Total del servicio: $${total}
+💰 *Precio total del servicio: $${total}*
+💸 *Con 10% descuento efectivo: $${totalEfectivo}*
+
 ✅ Seña pagada: $${señaFija}
-💸 Resto a pagar en el local: $${resto}
+💵 Resto a pagar en el local:
+   • Efectivo: $${restoEfectivo} (10% descuento aplicado)
+   • Otros medios: $${resto}
 
 Te enviaré un recordatorio el día anterior.
 
