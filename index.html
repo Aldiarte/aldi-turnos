@@ -570,13 +570,79 @@ Te enviaré un recordatorio el día anterior.
             
             // Guardar en Firebase
             const guardarRegistros = async (nuevos) => {
+                console.log('🔄 Guardando registros...', nuevos.length, 'registros');
                 setRegistros(nuevos);
                 try {
-                    await FirebaseDB.set('registrosIngresos', nuevos);
+                    const resultado = await FirebaseDB.set('registrosIngresos', nuevos);
+                    if (resultado) {
+                        console.log('✅ Registros guardados correctamente en Firebase');
+                    } else {
+                        console.error('❌ FirebaseDB.set retornó false');
+                        alert('❌ Error al guardar en Firebase. Verificá los permisos.');
+                    }
+                    return resultado;
                 } catch (error) {
-                    console.error('Error guardando registros:', error);
-                    alert('❌ Error al guardar. Intentá de nuevo.');
+                    console.error('❌ Error guardando registros:', error);
+                    alert('❌ Error al guardar. Verificá la consola para más detalles.');
+                    return false;
                 }
+            };
+            
+            // Función de diagnóstico de Firebase
+            const diagnosticarFirebase = async () => {
+                console.log('🔍 Iniciando diagnóstico de Firebase...');
+                
+                const diagnostico = {
+                    dbConectado: db !== null,
+                    timestamp: new Date().toISOString()
+                };
+                
+                // Test 1: Intentar leer
+                try {
+                    console.log('Test 1: Intentando leer registrosIngresos...');
+                    const datos = await FirebaseDB.get('registrosIngresos');
+                    diagnostico.lecturaExitosa = true;
+                    diagnostico.registrosEncontrados = datos ? (Array.isArray(datos) ? datos.length : 'No es array') : 'null';
+                    console.log('✅ Lectura exitosa:', diagnostico.registrosEncontrados);
+                } catch (error) {
+                    diagnostico.lecturaExitosa = false;
+                    diagnostico.errorLectura = error.message;
+                    console.error('❌ Error en lectura:', error);
+                }
+                
+                // Test 2: Intentar escribir un test
+                try {
+                    console.log('Test 2: Intentando escribir test...');
+                    const testData = { test: true, timestamp: Date.now() };
+                    const escrituraOk = await FirebaseDB.set('_test', testData);
+                    diagnostico.escrituraExitosa = escrituraOk;
+                    console.log('✅ Escritura:', escrituraOk ? 'exitosa' : 'falló');
+                    
+                    // Test 3: Verificar que se guardó
+                    if (escrituraOk) {
+                        const verificacion = await FirebaseDB.get('_test');
+                        diagnostico.verificacionExitosa = verificacion && verificacion.test === true;
+                        console.log('✅ Verificación:', diagnostico.verificacionExitosa);
+                    }
+                } catch (error) {
+                    diagnostico.escrituraExitosa = false;
+                    diagnostico.errorEscritura = error.message;
+                    console.error('❌ Error en escritura:', error);
+                }
+                
+                console.log('📊 Resultado del diagnóstico:', diagnostico);
+                
+                const mensaje = `🔍 DIAGNÓSTICO DE FIREBASE\n\n` +
+                    `✅ Base de datos: ${diagnostico.dbConectado ? 'Conectada' : 'No conectada'}\n` +
+                    `📖 Lectura: ${diagnostico.lecturaExitosa ? 'OK' : 'FALLO'}\n` +
+                    `📝 Escritura: ${diagnostico.escrituraExitosa ? 'OK' : 'FALLO'}\n` +
+                    `🔄 Verificación: ${diagnostico.verificacionExitosa ? 'OK' : 'FALLO'}\n` +
+                    `📊 Registros actuales: ${diagnostico.registrosEncontrados}\n\n` +
+                    (diagnostico.errorLectura ? `Error lectura: ${diagnostico.errorLectura}\n` : '') +
+                    (diagnostico.errorEscritura ? `Error escritura: ${diagnostico.errorEscritura}\n` : '') +
+                    `\nRevisá la consola para más detalles.`;
+                
+                alert(mensaje);
             };
             
             // Lista única de clientas para autocomplete
@@ -617,33 +683,45 @@ Te enviaré un recordatorio el día anterior.
             };
             
             // Agregar registro
-            const agregarRegistro = () => {
+            const agregarRegistro = async () => {
                 if (!nuevoRegistro.clienta || nuevoRegistro.servicios.length === 0) {
                     alert('Completá clienta y servicios');
                     return;
                 }
+                console.log('➕ Agregando nuevo registro...');
                 const registro = {
                     ...nuevoRegistro,
                     id: Date.now(),
+                    normalizado: true, // Manual = normalizado
                     fechaCreacion: new Date().toISOString()
                 };
-                guardarRegistros([...registros, registro]);
-                setNuevoRegistro({
-                    fecha: new Date().toISOString().split('T')[0],
-                    clienta: '',
-                    servicios: [],
-                    importe: 0,
-                    metodoPago: 'efectivo',
-                    sucursal: 'Bahía Blanca',
-                    notas: ''
-                });
-                setMostrarFormulario(false);
-                alert('✅ Registro agregado');
+                console.log('Registro a agregar:', registro);
+                
+                const resultado = await guardarRegistros([...registros, registro]);
+                
+                if (resultado) {
+                    setNuevoRegistro({
+                        fecha: new Date().toISOString().split('T')[0],
+                        clienta: '',
+                        servicios: [],
+                        importe: 0,
+                        metodoPago: 'efectivo',
+                        sucursal: 'Bahía Blanca',
+                        notas: ''
+                    });
+                    setMostrarFormulario(false);
+                    alert('✅ Registro agregado');
+                } else {
+                    alert('❌ Error al guardar el registro');
+                }
             };
             
             // Importar desde reservas confirmadas
-            const importarDesdeReservas = () => {
+            const importarDesdeReservas = async () => {
+                console.log('📥 Importando desde reservas confirmadas...');
                 const confirmadas = reservas.filter(r => r.estado === 'confirmada' && !r.esFicticia);
+                console.log('Reservas confirmadas encontradas:', confirmadas.length);
+                
                 let importados = 0;
                 const nuevos = [];
                 
@@ -672,8 +750,13 @@ Te enviaré un recordatorio el día anterior.
                 });
                 
                 if (importados > 0) {
-                    guardarRegistros([...registros, ...nuevos]);
-                    alert(`✅ ${importados} registros importados desde reservas`);
+                    console.log('Nuevos registros a importar:', nuevos);
+                    const resultado = await guardarRegistros([...registros, ...nuevos]);
+                    if (resultado) {
+                        alert(`✅ ${importados} registros importados desde reservas`);
+                    } else {
+                        alert('❌ Error al guardar los registros importados');
+                    }
                 } else {
                     alert('No hay nuevas reservas para importar');
                 }
@@ -946,10 +1029,18 @@ Ingresá el número (1-6):`;
                         
                         if (nuevos.length > 0) {
                             const sinNormalizar = nuevos.filter(r => !r.normalizado).length;
-                            console.log(`Importando ${nuevos.length} registros a Firebase...`);
-                            await guardarRegistros([...registros, ...nuevos]);
-                            console.log('✅ Registros guardados en Firebase');
-                            alert(`✅ ${nuevos.length} registros importados y guardados\n\n${sinNormalizar > 0 ? `⚠️ ${sinNormalizar} pendientes de normalizar` : '✅ Todos normalizados'}`);
+                            console.log(`📥 Importando ${nuevos.length} registros a Firebase...`);
+                            console.log('Registros a importar:', nuevos);
+                            
+                            const resultado = await guardarRegistros([...registros, ...nuevos]);
+                            
+                            if (resultado) {
+                                console.log('✅ Registros guardados en Firebase correctamente');
+                                alert(`✅ ${nuevos.length} registros importados y guardados\n\n${sinNormalizar > 0 ? `⚠️ ${sinNormalizar} pendientes de normalizar` : '✅ Todos normalizados'}`);
+                            } else {
+                                console.error('❌ Error: No se pudieron guardar los registros');
+                                alert('❌ Los registros se importaron pero NO se guardaron en Firebase.\n\nVerificá los permisos de Firebase.');
+                            }
                         } else {
                             alert('❌ No se encontraron registros válidos.\n\nVerificá que el Excel tenga columnas: FECHA y PRECIO');
                         }
@@ -990,6 +1081,9 @@ Ingresá el número (1-6):`;
                                 <button onClick={() => setVistaActual('comparativo')} 
                                     className={`px-4 py-2 rounded-lg text-sm ${vistaActual === 'comparativo' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
                                     📊 Comparativo
+                                </button>
+                                <button onClick={diagnosticarFirebase} className="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg text-sm hover:bg-yellow-200">
+                                    🔍 Test Firebase
                                 </button>
                                 <button onClick={() => setView('admin')} className="px-4 py-2 bg-gray-100 rounded-lg text-sm">← Volver</button>
                             </div>
