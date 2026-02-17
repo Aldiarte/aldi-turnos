@@ -1329,6 +1329,151 @@ Ingresá el número (1-6):`;
                                         })()}
                                     </div>
                                     
+                                    {/* Comparación Trimestral Anualizada */}
+                                    <div className="mb-8">
+                                        <h3 className="text-xl font-bold mb-4">📊 Comparación Trimestral Anualizada</h3>
+                                        <p className="text-sm text-gray-600 mb-4">Visualiza el desempeño de cada trimestre a lo largo de los años</p>
+                                        {(() => {
+                                            // Agrupar por trimestre y año
+                                            const trimestres = {};
+                                            registros.forEach(r => {
+                                                if (!r.fecha) return;
+                                                const [año, mes] = r.fecha.split('-');
+                                                const mesNum = parseInt(mes);
+                                                let trimestre;
+                                                if (mesNum >= 1 && mesNum <= 3) trimestre = 'Q1';
+                                                else if (mesNum >= 4 && mesNum <= 6) trimestre = 'Q2';
+                                                else if (mesNum >= 7 && mesNum <= 9) trimestre = 'Q3';
+                                                else trimestre = 'Q4';
+                                                
+                                                const key = `${trimestre}-${año}`;
+                                                if (!trimestres[key]) {
+                                                    trimestres[key] = { 
+                                                        año, 
+                                                        trimestre, 
+                                                        ingresos: 0, 
+                                                        servicios: 0,
+                                                        clientas: new Set()
+                                                    };
+                                                }
+                                                trimestres[key].ingresos += r.importe;
+                                                trimestres[key].servicios += 1;
+                                                trimestres[key].clientas.add(r.clienta);
+                                            });
+                                            
+                                            // Ordenar por año y trimestre
+                                            const trimestresData = Object.values(trimestres)
+                                                .map(t => ({
+                                                    ...t,
+                                                    clientas: t.clientas.size
+                                                }))
+                                                .sort((a, b) => {
+                                                    if (a.año !== b.año) return a.año.localeCompare(b.año);
+                                                    const orden = { Q1: 1, Q2: 2, Q3: 3, Q4: 4 };
+                                                    return orden[a.trimestre] - orden[b.trimestre];
+                                                });
+                                            
+                                            if (trimestresData.length === 0) {
+                                                return <p className="text-gray-500">No hay datos para mostrar</p>;
+                                            }
+                                            
+                                            // Agrupar por trimestre para comparar entre años
+                                            const porTrimestre = {
+                                                Q1: trimestresData.filter(t => t.trimestre === 'Q1'),
+                                                Q2: trimestresData.filter(t => t.trimestre === 'Q2'),
+                                                Q3: trimestresData.filter(t => t.trimestre === 'Q3'),
+                                                Q4: trimestresData.filter(t => t.trimestre === 'Q4')
+                                            };
+                                            
+                                            const nombresTrimestre = {
+                                                Q1: '1° Trimestre (Ene-Mar)',
+                                                Q2: '2° Trimestre (Abr-Jun)',
+                                                Q3: '3° Trimestre (Jul-Sep)',
+                                                Q4: '4° Trimestre (Oct-Dic)'
+                                            };
+                                            
+                                            const colores = {
+                                                Q1: 'from-blue-500 to-blue-600',
+                                                Q2: 'from-green-500 to-green-600',
+                                                Q3: 'from-orange-500 to-orange-600',
+                                                Q4: 'from-purple-500 to-purple-600'
+                                            };
+                                            
+                                            return (
+                                                <div className="space-y-6">
+                                                    {Object.entries(porTrimestre).map(([trimestre, datos]) => {
+                                                        if (datos.length === 0) return null;
+                                                        
+                                                        const maxIngresos = Math.max(...datos.map(d => d.ingresos));
+                                                        
+                                                        return (
+                                                            <div key={trimestre} className="border rounded-lg p-4 bg-gray-50">
+                                                                <h4 className="font-bold text-lg mb-3">{nombresTrimestre[trimestre]}</h4>
+                                                                <div className="space-y-3">
+                                                                    {datos.map((data, idx) => {
+                                                                        const anterior = idx > 0 ? datos[idx - 1] : null;
+                                                                        const crecimiento = anterior 
+                                                                            ? ((data.ingresos - anterior.ingresos) / anterior.ingresos * 100) 
+                                                                            : 0;
+                                                                        
+                                                                        return (
+                                                                            <div key={`${trimestre}-${data.año}`} className="bg-white rounded-lg p-3 shadow-sm">
+                                                                                <div className="flex items-center justify-between mb-2">
+                                                                                    <div className="flex items-center gap-3">
+                                                                                        <span className="font-bold text-gray-700">{data.año}</span>
+                                                                                        {anterior && (
+                                                                                            <span className={`text-xs px-2 py-1 rounded-full ${
+                                                                                                crecimiento >= 0 
+                                                                                                    ? 'bg-green-100 text-green-700' 
+                                                                                                    : 'bg-red-100 text-red-700'
+                                                                                            }`}>
+                                                                                                {crecimiento >= 0 ? '↗' : '↘'} {crecimiento >= 0 ? '+' : ''}{crecimiento.toFixed(1)}%
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <div className="text-right">
+                                                                                        <p className="font-bold text-green-600">${formatearNumero(data.ingresos)}</p>
+                                                                                        <p className="text-xs text-gray-600">{data.servicios} servicios · {data.clientas} clientas</p>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                                                                    <div className={`bg-gradient-to-r ${colores[trimestre]} h-2 rounded-full transition-all`}
+                                                                                        style={{width: `${(data.ingresos / maxIngresos) * 100}%`}}></div>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    
+                                                    {/* Resumen comparativo entre trimestres */}
+                                                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border-2 border-blue-200">
+                                                        <h4 className="font-bold mb-3">📈 Resumen de Trimestres</h4>
+                                                        <div className="grid md:grid-cols-4 gap-3">
+                                                            {Object.entries(porTrimestre).map(([trimestre, datos]) => {
+                                                                if (datos.length === 0) return null;
+                                                                const totalIngresos = datos.reduce((sum, d) => sum + d.ingresos, 0);
+                                                                const promedio = totalIngresos / datos.length;
+                                                                const ultimo = datos[datos.length - 1];
+                                                                
+                                                                return (
+                                                                    <div key={trimestre} className="bg-white rounded-lg p-3 shadow-sm">
+                                                                        <p className="text-xs font-semibold text-gray-600 mb-1">{trimestre}</p>
+                                                                        <p className="text-lg font-bold text-green-600">${formatearNumero(ultimo.ingresos)}</p>
+                                                                        <p className="text-xs text-gray-600">Último: {ultimo.año}</p>
+                                                                        <p className="text-xs text-gray-500 mt-1">Promedio: ${formatearNumero(Math.round(promedio))}</p>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                    
                                     {/* Comparación por Mes entre Años */}
                                     <div className="mb-8">
                                         <h3 className="text-xl font-bold mb-4">📆 Comparación Mes a Mes</h3>
