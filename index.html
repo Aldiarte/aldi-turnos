@@ -259,37 +259,71 @@ Te enviaré un recordatorio el día anterior.
         };
 
         // CALENDARIO DE TURNOS - Vista simple para verificar disponibilidad
-        function CalendarioTurnos({ reservas, horarios, setView, guardarReservas }) {
+        function CalendarioTurnos({ reservas, horarios, setView, guardarReservas, servicios, señaFija }) {
             const [sucursalId, setSucursalId] = useState(1);
             const [fechaSeleccionada, setFechaSeleccionada] = useState(() => {
-                return new Date().toISOString().split('T')[0];
+                const d = new Date();
+                return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
             });
+            
+            // Modal para turno real
+            const [modalTurno, setModalTurno] = useState(null); // { fecha, hora }
+            const [formTurno, setFormTurno] = useState({ nombre:'', telefono:'', serviciosIds:[], notas:'' });
             
             const sucursal = SUCURSALES.find(s => s.id === sucursalId);
             
-            // Ocupar turno manualmente (ficticio)
-            const ocuparTurnoManual = (fecha, hora) => {
-                if (!confirm(`¿Ocupar el turno ${hora} del ${fecha}?\n\nEsto bloqueará el turno pero NO creará una reserva real.`)) {
-                    return;
-                }
-                
-                const reservaFicticia = {
+            // Bloquear turno (ficticio)
+            const bloquearTurno = (fecha, hora) => {
+                if (!confirm(`¿Bloquear el turno ${hora} del ${fecha}?\n\nEsto bloqueará el horario sin crear una reserva real.`)) return;
+                const nueva = {
                     id: Date.now(),
                     cliente: { nombre: 'Turno Bloqueado', telefono: '-', email: '-' },
                     servicios: [{ id: 0, nombre: 'Bloqueado manualmente', duracion: 30, precio: 0 }],
-                    fecha: fecha,
-                    hora: hora,
-                    sucursal: sucursal,
+                    fecha, hora, sucursal,
                     estado: 'confirmada',
                     fechaCreacion: new Date().toISOString(),
                     duracionTotal: 30,
                     turnosBloqueados: [`${fecha}|${hora}`],
-                    esFicticia: true // Marcador para identificarla
+                    esFicticia: true
                 };
-                
-                const nuevas = [...reservas, reservaFicticia];
-                guardarReservas(nuevas);
-                alert('✅ Turno ocupado manualmente');
+                guardarReservas([...reservas, nueva]);
+                alert('✅ Turno bloqueado');
+            };
+
+            // Guardar turno real cargado manualmente
+            const guardarTurnoReal = () => {
+                if (!formTurno.nombre.trim()) { alert('Ingresá el nombre de la clienta'); return; }
+                if (!formTurno.telefono.trim()) { alert('Ingresá el teléfono'); return; }
+                if (formTurno.serviciosIds.length === 0) { alert('Elegí al menos un servicio'); return; }
+
+                const serviciosElegidos = servicios.filter(s => formTurno.serviciosIds.includes(s.id) && !s.esIndeciso);
+                const duracionTotal = serviciosElegidos.reduce((s, sv) => s + sv.duracion, 0);
+                const turnosBloqueados = calcularTurnosBloqueados(modalTurno.fecha, modalTurno.hora, duracionTotal);
+
+                const nueva = {
+                    id: Date.now(),
+                    cliente: {
+                        nombre: formTurno.nombre.trim(),
+                        telefono: formTurno.telefono.trim(),
+                        email: ''
+                    },
+                    servicios: serviciosElegidos,
+                    fecha: modalTurno.fecha,
+                    hora: modalTurno.hora,
+                    sucursal,
+                    estado: 'confirmada',
+                    fechaCreacion: new Date().toISOString(),
+                    duracionTotal,
+                    turnosBloqueados,
+                    esFicticia: false,
+                    cargadaManualmente: true,
+                    notas: formTurno.notas
+                };
+
+                guardarReservas([...reservas, nueva]);
+                setModalTurno(null);
+                setFormTurno({ nombre:'', telefono:'', serviciosIds:[], notas:'' });
+                alert(`✅ Turno cargado para ${formTurno.nombre}`);
             };
             
             // Generar días para mostrar (7 días desde hoy)
@@ -448,11 +482,21 @@ Te enviaré un recordatorio el día anterior.
                                                         {estado === 'libre' ? (
                                                             <>
                                                                 <div className="text-xs text-green-600 mt-1">✓ Libre</div>
-                                                                <button
-                                                                    onClick={() => ocuparTurnoManual(fechaSeleccionada, hora)}
-                                                                    className="mt-2 text-xs bg-orange-500 text-white px-2 py-1 rounded hover:bg-orange-600">
-                                                                    🔒 Ocupar
-                                                                </button>
+                                                                <div className="flex flex-col gap-1 mt-2">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setFormTurno({ nombre:'', telefono:'', serviciosIds:[], notas:'' });
+                                                                            setModalTurno({ fecha: fechaSeleccionada, hora });
+                                                                        }}
+                                                                        className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">
+                                                                        👤 Turno real
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => bloquearTurno(fechaSeleccionada, hora)}
+                                                                        className="text-xs bg-gray-400 text-white px-2 py-1 rounded hover:bg-gray-500">
+                                                                        🔒 Bloquear
+                                                                    </button>
+                                                                </div>
                                                             </>
                                                         ) : (
                                                             <div className="text-xs text-red-600 mt-1">
@@ -473,7 +517,7 @@ Te enviaré un recordatorio el día anterior.
                                 )}
                                 
                                 {/* Leyenda */}
-                                <div className="mt-6 pt-6 border-t flex gap-6 text-sm">
+                                <div className="mt-6 pt-6 border-t flex gap-6 text-sm flex-wrap">
                                     <div className="flex items-center gap-2">
                                         <div className="w-4 h-4 bg-green-200 border-2 border-green-400 rounded"></div>
                                         <span>Libre</span>
@@ -482,869 +526,565 @@ Te enviaré un recordatorio el día anterior.
                                         <div className="w-4 h-4 bg-red-200 border-2 border-red-400 rounded"></div>
                                         <span>Ocupado</span>
                                     </div>
+                                    <div className="flex items-center gap-2 text-blue-600">
+                                        <span>👤 Turno real</span>
+                                        <span className="text-gray-400">= carga con datos de clienta</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-gray-500">
+                                        <span>🔒 Bloquear</span>
+                                        <span className="text-gray-400">= bloqueo sin reserva</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    {/* MODAL TURNO REAL */}
+                    {modalTurno && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-screen overflow-y-auto">
+                                <div className="p-6">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <div>
+                                            <h2 className="text-xl font-bold">👤 Cargar Turno Real</h2>
+                                            <p className="text-sm text-gray-500 mt-1">
+                                                📅 {(() => { const [y,m,d] = modalTurno.fecha.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'}); })()} · ⏰ {modalTurno.hora}
+                                            </p>
+                                        </div>
+                                        <button onClick={() => setModalTurno(null)} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {/* Nombre */}
+                                        <div>
+                                            <label className="block text-sm font-semibold mb-1">Nombre de la clienta *</label>
+                                            <input type="text" value={formTurno.nombre}
+                                                onChange={e => setFormTurno({...formTurno, nombre: e.target.value})}
+                                                className="w-full p-3 border-2 rounded-xl focus:border-blue-500 outline-none"
+                                                placeholder="Ej: María García" />
+                                        </div>
+
+                                        {/* Teléfono */}
+                                        <div>
+                                            <label className="block text-sm font-semibold mb-1">Teléfono *</label>
+                                            <input type="tel" value={formTurno.telefono}
+                                                onChange={e => setFormTurno({...formTurno, telefono: e.target.value})}
+                                                className="w-full p-3 border-2 rounded-xl focus:border-blue-500 outline-none"
+                                                placeholder="Ej: 2914567890" />
+                                        </div>
+
+                                        {/* Servicios */}
+                                        <div>
+                                            <label className="block text-sm font-semibold mb-2">Servicios *</label>
+                                            <div className="space-y-2 max-h-48 overflow-y-auto border-2 rounded-xl p-3">
+                                                {servicios.filter(s => !s.esIndeciso).map(s => (
+                                                    <label key={s.id} className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded-lg">
+                                                        <input type="checkbox"
+                                                            checked={formTurno.serviciosIds.includes(s.id)}
+                                                            onChange={e => {
+                                                                const ids = e.target.checked
+                                                                    ? [...formTurno.serviciosIds, s.id]
+                                                                    : formTurno.serviciosIds.filter(id => id !== s.id);
+                                                                setFormTurno({...formTurno, serviciosIds: ids});
+                                                            }}
+                                                            className="w-4 h-4 accent-blue-600" />
+                                                        <div>
+                                                            <p className="font-medium text-sm">{s.nombre}</p>
+                                                            <p className="text-xs text-gray-500">⏱️ {s.duracion}min · ${new Intl.NumberFormat('es-AR').format(s.precio)}</p>
+                                                        </div>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                            {formTurno.serviciosIds.length > 0 && (
+                                                <div className="mt-2 p-3 bg-blue-50 rounded-xl text-sm">
+                                                    <div className="flex justify-between">
+                                                        <span>⏱️ Duración total:</span>
+                                                        <span className="font-semibold">{servicios.filter(s => formTurno.serviciosIds.includes(s.id)).reduce((s,sv)=>s+sv.duracion,0)} min</span>
+                                                    </div>
+                                                    <div className="flex justify-between mt-1">
+                                                        <span>💰 Total:</span>
+                                                        <span className="font-semibold text-green-600">${new Intl.NumberFormat('es-AR').format(servicios.filter(s => formTurno.serviciosIds.includes(s.id)).reduce((s,sv)=>s+sv.precio,0))}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Notas */}
+                                        <div>
+                                            <label className="block text-sm font-semibold mb-1">Notas (opcional)</label>
+                                            <input type="text" value={formTurno.notas}
+                                                onChange={e => setFormTurno({...formTurno, notas: e.target.value})}
+                                                className="w-full p-3 border-2 rounded-xl focus:border-blue-500 outline-none"
+                                                placeholder="Ej: Viene con su hermana, prefiere esmalte oscuro..." />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-3 mt-6">
+                                        <button onClick={guardarTurnoReal}
+                                            className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">
+                                            ✅ Confirmar Turno
+                                        </button>
+                                        <button onClick={() => setModalTurno(null)}
+                                            className="px-4 py-3 bg-gray-200 rounded-xl hover:bg-gray-300">
+                                            Cancelar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
 
         // PANEL DE ANÁLISIS CON FIREBASE Y EXCEL
         function PanelAnalisis({ reservas, servicios, setView }) {
-            // Función para formatear números con separadores de miles
-            const formatearNumero = (num) => {
-                return new Intl.NumberFormat('es-AR').format(num);
-            };
-            
+            const formatearNumero = (num) => new Intl.NumberFormat('es-AR').format(num || 0);
+
             const [registros, setRegistros] = useState([]);
             const [cargando, setCargando] = useState(true);
-            const [nuevoRegistro, setNuevoRegistro] = useState({
-                fecha: new Date().toISOString().split('T')[0],
-                clienta: '',
-                servicios: [],
-                importe: 0,
-                metodoPago: 'efectivo',
-                sucursal: 'Bahía Blanca',
-                notas: ''
-            });
-            
-            // Cargar filtros guardados de localStorage
+            const [vistaActual, setVistaActual] = useState('dashboard');
+            const [paginaActual, setPaginaActual] = useState(1);
+            const [mostrarFormulario, setMostrarFormulario] = useState(false);
+            const REGISTROS_POR_PAGINA = 50;
+
             const cargarFiltrosGuardados = () => {
                 try {
-                    const guardado = localStorage.getItem('filtrosAnalisis');
-                    return guardado ? JSON.parse(guardado) : {
-                        fechaInicio: '',
-                        fechaFin: '',
-                        clienta: '',
-                        servicio: '',
-                        metodoPago: '',
-                        sucursal: ''
-                    };
-                } catch {
-                    return {
-                        fechaInicio: '',
-                        fechaFin: '',
-                        clienta: '',
-                        servicio: '',
-                        metodoPago: '',
-                        sucursal: ''
-                    };
-                }
+                    const g = localStorage.getItem('filtrosAnalisis');
+                    return g ? JSON.parse(g) : { fechaInicio:'', fechaFin:'', clienta:'', servicio:'', metodoPago:'', sucursal:'' };
+                } catch { return { fechaInicio:'', fechaFin:'', clienta:'', servicio:'', metodoPago:'', sucursal:'' }; }
             };
-            
+
             const [filtros, setFiltros] = useState(cargarFiltrosGuardados());
-            const [mostrarFormulario, setMostrarFormulario] = useState(false);
-            const [vistaActual, setVistaActual] = useState('dashboard');
-            
-            // Guardar filtros automáticamente cuando cambian
-            useEffect(() => {
-                localStorage.setItem('filtrosAnalisis', JSON.stringify(filtros));
-            }, [filtros]);
-            
-            // Estados para el editor modal
-            const [editando, setEditando] = useState(null);
-            const [formEdit, setFormEdit] = useState({
-                clienta: '',
-                servicios: [],
-                importe: 0,
-                metodoPago: 'efectivo',
-                sucursal: 'Bahía Blanca',
-                notas: ''
+            const [nuevoRegistro, setNuevoRegistro] = useState({
+                fecha: new Date().toISOString().split('T')[0],
+                clienta: '', servicios: [], importe: 0,
+                metodoPago: 'efectivo', sucursal: 'Bahía Blanca', notas: ''
             });
-            
+            const [editando, setEditando] = useState(null);
+            const [formEdit, setFormEdit] = useState({ clienta:'', servicios:[], importe:0, metodoPago:'efectivo', sucursal:'Bahía Blanca', notas:'' });
+
+            // Persistir filtros
+            useEffect(() => { localStorage.setItem('filtrosAnalisis', JSON.stringify(filtros)); }, [filtros]);
+
             // Cargar desde Firebase
             useEffect(() => {
                 const cargar = async () => {
                     try {
                         const data = await FirebaseDB.get('registrosIngresos');
-                        setRegistros(data || []);
-                    } catch (error) {
-                        console.error('Error cargando registros:', error);
+                        setRegistros(Array.isArray(data) ? data : (data ? Object.values(data) : []));
+                    } catch(e) {
+                        console.error('Error cargando:', e);
                         setRegistros([]);
                     }
                     setCargando(false);
                 };
                 cargar();
             }, []);
-            
+
             // Guardar en Firebase
             const guardarRegistros = async (nuevos) => {
-                console.log('🔄 Guardando registros...', nuevos.length, 'registros');
                 setRegistros(nuevos);
                 try {
-                    const resultado = await FirebaseDB.set('registrosIngresos', nuevos);
-                    if (resultado) {
-                        console.log('✅ Registros guardados correctamente en Firebase');
-                    } else {
-                        console.error('❌ FirebaseDB.set retornó false');
-                        alert('❌ Error al guardar en Firebase. Verificá los permisos.');
-                    }
-                    return resultado;
-                } catch (error) {
-                    console.error('❌ Error guardando registros:', error);
-                    alert('❌ Error al guardar. Verificá la consola para más detalles.');
+                    await FirebaseDB.set('registrosIngresos', nuevos);
+                    return true;
+                } catch(e) {
+                    console.error('Error guardando:', e);
+                    alert('❌ Error al guardar. Intentá de nuevo.');
                     return false;
                 }
             };
-            
-            // Función de diagnóstico de Firebase
-            const diagnosticarFirebase = async () => {
-                console.log('🔍 Iniciando diagnóstico de Firebase...');
-                
-                const diagnostico = {
-                    dbConectado: db !== null,
-                    timestamp: new Date().toISOString()
-                };
-                
-                // Test 1: Intentar leer
-                try {
-                    console.log('Test 1: Intentando leer registrosIngresos...');
-                    const datos = await FirebaseDB.get('registrosIngresos');
-                    diagnostico.lecturaExitosa = true;
-                    diagnostico.registrosEncontrados = datos ? (Array.isArray(datos) ? datos.length : 'No es array') : 'null';
-                    console.log('✅ Lectura exitosa:', diagnostico.registrosEncontrados);
-                } catch (error) {
-                    diagnostico.lecturaExitosa = false;
-                    diagnostico.errorLectura = error.message;
-                    console.error('❌ Error en lectura:', error);
-                }
-                
-                // Test 2: Intentar escribir un test
-                try {
-                    console.log('Test 2: Intentando escribir test...');
-                    const testData = { test: true, timestamp: Date.now() };
-                    const escrituraOk = await FirebaseDB.set('_test', testData);
-                    diagnostico.escrituraExitosa = escrituraOk;
-                    console.log('✅ Escritura:', escrituraOk ? 'exitosa' : 'falló');
-                    
-                    // Test 3: Verificar que se guardó
-                    if (escrituraOk) {
-                        const verificacion = await FirebaseDB.get('_test');
-                        diagnostico.verificacionExitosa = verificacion && verificacion.test === true;
-                        console.log('✅ Verificación:', diagnostico.verificacionExitosa);
-                    }
-                } catch (error) {
-                    diagnostico.escrituraExitosa = false;
-                    diagnostico.errorEscritura = error.message;
-                    console.error('❌ Error en escritura:', error);
-                }
-                
-                console.log('📊 Resultado del diagnóstico:', diagnostico);
-                
-                const mensaje = `🔍 DIAGNÓSTICO DE FIREBASE\n\n` +
-                    `✅ Base de datos: ${diagnostico.dbConectado ? 'Conectada' : 'No conectada'}\n` +
-                    `📖 Lectura: ${diagnostico.lecturaExitosa ? 'OK' : 'FALLO'}\n` +
-                    `📝 Escritura: ${diagnostico.escrituraExitosa ? 'OK' : 'FALLO'}\n` +
-                    `🔄 Verificación: ${diagnostico.verificacionExitosa ? 'OK' : 'FALLO'}\n` +
-                    `📊 Registros actuales: ${diagnostico.registrosEncontrados}\n\n` +
-                    (diagnostico.errorLectura ? `Error lectura: ${diagnostico.errorLectura}\n` : '') +
-                    (diagnostico.errorEscritura ? `Error escritura: ${diagnostico.errorEscritura}\n` : '') +
-                    `\nRevisá la consola para más detalles.`;
-                
-                alert(mensaje);
-            };
-            
-            // Lista única de clientas para autocomplete
-            const clientasUnicas = [...new Set(registros.map(r => r.clienta).filter(c => c))].sort();
-            
-            // Abrir editor
-            const abrirEditor = (registro) => {
-                setEditando(registro.id);
-                setFormEdit({
-                    clienta: registro.clienta || '',
-                    servicios: registro.servicios || [],
-                    importe: registro.importe || 0,
-                    metodoPago: registro.metodoPago || 'efectivo',
-                    sucursal: registro.sucursal || 'Bahía Blanca',
-                    notas: registro.notas || ''
-                });
-            };
-            
-            // Guardar edición
-            const guardarEdicion = () => {
-                if (!formEdit.clienta) {
-                    alert('⚠️ Completá el nombre del cliente');
-                    return;
-                }
-                if (formEdit.servicios.length === 0) {
-                    alert('⚠️ Seleccioná al menos un servicio');
-                    return;
-                }
-                
-                const actualizados = registros.map(r => 
-                    r.id === editando 
-                        ? { ...r, ...formEdit, normalizado: true }
-                        : r
-                );
-                guardarRegistros(actualizados);
-                setEditando(null);
-                alert('✅ Registro actualizado');
-            };
-            
-            // Agregar registro
-            const agregarRegistro = async () => {
-                if (!nuevoRegistro.clienta || nuevoRegistro.servicios.length === 0) {
-                    alert('Completá clienta y servicios');
-                    return;
-                }
-                console.log('➕ Agregando nuevo registro...');
-                const registro = {
-                    ...nuevoRegistro,
-                    id: Date.now(),
-                    normalizado: true, // Manual = normalizado
-                    fechaCreacion: new Date().toISOString()
-                };
-                console.log('Registro a agregar:', registro);
-                
-                const resultado = await guardarRegistros([...registros, registro]);
-                
-                if (resultado) {
-                    setNuevoRegistro({
-                        fecha: new Date().toISOString().split('T')[0],
-                        clienta: '',
-                        servicios: [],
-                        importe: 0,
-                        metodoPago: 'efectivo',
-                        sucursal: 'Bahía Blanca',
-                        notas: ''
-                    });
-                    setMostrarFormulario(false);
-                    alert('✅ Registro agregado');
-                } else {
-                    alert('❌ Error al guardar el registro');
-                }
-            };
-            
-            // Importar desde reservas confirmadas
-            const importarDesdeReservas = async () => {
-                console.log('📥 Importando desde reservas confirmadas...');
-                const confirmadas = reservas.filter(r => r.estado === 'confirmada' && !r.esFicticia);
-                console.log('Reservas confirmadas encontradas:', confirmadas.length);
-                
-                let importados = 0;
-                const nuevos = [];
-                
-                confirmadas.forEach(r => {
-                    const existe = registros.some(reg => 
-                        reg.clienta === r.cliente.nombre && 
-                        reg.fecha === r.fecha &&
-                        reg.importe === r.servicios.reduce((sum, s) => sum + s.precio, 0)
-                    );
-                    
-                    if (!existe) {
-                        nuevos.push({
-                            id: Date.now() + Math.random(),
-                            fecha: r.fecha,
-                            clienta: r.cliente.nombre,
-                            servicios: r.servicios.map(s => s.nombre),
-                            importe: r.servicios.reduce((sum, s) => sum + s.precio, 0),
-                            metodoPago: 'transferencia',
-                            sucursal: r.sucursal.nombre,
-                            notas: 'Importado desde reserva',
-                            normalizado: true, // Ya vienen normalizados desde reservas
-                            fechaCreacion: new Date().toISOString()
-                        });
-                        importados++;
-                    }
-                });
-                
-                if (importados > 0) {
-                    console.log('Nuevos registros a importar:', nuevos);
-                    const resultado = await guardarRegistros([...registros, ...nuevos]);
-                    if (resultado) {
-                        alert(`✅ ${importados} registros importados desde reservas`);
-                    } else {
-                        alert('❌ Error al guardar los registros importados');
-                    }
-                } else {
-                    alert('No hay nuevas reservas para importar');
-                }
-            };
-            
-            // Eliminación masiva de registros
-            const eliminarRegistrosPorEstado = (normalizado) => {
-                const aEliminar = registros.filter(r => normalizado ? r.normalizado : !r.normalizado);
-                const tipo = normalizado ? 'normalizados' : 'pendientes de normalizar';
-                
-                if (aEliminar.length === 0) {
-                    alert(`No hay registros ${tipo}`);
-                    return;
-                }
-                
-                if (confirm(`⚠️ ¿ELIMINAR TODOS LOS REGISTROS ${tipo.toUpperCase()}?\n\nSe eliminarán ${aEliminar.length} registros.\n\n¡Esta acción NO se puede deshacer!`)) {
-                    const nuevos = registros.filter(r => normalizado ? !r.normalizado : r.normalizado);
-                    guardarRegistros(nuevos);
-                    alert(`✅ ${aEliminar.length} registros eliminados`);
-                }
-            };
-            
-            const eliminarRegistrosPorRango = () => {
-                const fechaInicio = prompt('Fecha inicio (YYYY-MM-DD):');
-                if (!fechaInicio) return;
-                
-                const fechaFin = prompt('Fecha fin (YYYY-MM-DD):');
-                if (!fechaFin) return;
-                
-                const regexFecha = /^\d{4}-\d{2}-\d{2}$/;
-                if (!regexFecha.test(fechaInicio) || !regexFecha.test(fechaFin)) {
-                    alert('❌ Formato inválido. Usa YYYY-MM-DD');
-                    return;
-                }
-                
-                const aEliminar = registros.filter(r => r.fecha >= fechaInicio && r.fecha <= fechaFin);
-                
-                if (aEliminar.length === 0) {
-                    alert(`No hay registros entre ${fechaInicio} y ${fechaFin}`);
-                    return;
-                }
-                
-                if (confirm(`⚠️ ¿ELIMINAR REGISTROS?\n\nDesde: ${fechaInicio}\nHasta: ${fechaFin}\nTotal: ${aEliminar.length}\n\n¡No se puede deshacer!`)) {
-                    const nuevos = registros.filter(r => r.fecha < fechaInicio || r.fecha > fechaFin);
-                    guardarRegistros(nuevos);
-                    alert(`✅ ${aEliminar.length} registros eliminados`);
-                }
-            };
-            
-            const eliminarRegistrosAnterioresA = () => {
-                const fecha = prompt('Eliminar registros anteriores a (YYYY-MM-DD):');
-                if (!fecha) return;
-                
-                const regexFecha = /^\d{4}-\d{2}-\d{2}$/;
-                if (!regexFecha.test(fecha)) {
-                    alert('❌ Formato inválido. Usa YYYY-MM-DD');
-                    return;
-                }
-                
-                const aEliminar = registros.filter(r => r.fecha < fecha);
-                
-                if (aEliminar.length === 0) {
-                    alert(`No hay registros anteriores a ${fecha}`);
-                    return;
-                }
-                
-                if (confirm(`⚠️ ¿ELIMINAR REGISTROS ANTIGUOS?\n\nAnteriores a: ${fecha}\nTotal: ${aEliminar.length}\n\n¡No se puede deshacer!`)) {
-                    const nuevos = registros.filter(r => r.fecha >= fecha);
-                    guardarRegistros(nuevos);
-                    alert(`✅ ${aEliminar.length} registros eliminados`);
-                }
-            };
-            
-            const eliminarRegistrosFiltrados = () => {
-                if (registrosFiltrados.length === registros.length) {
-                    alert('⚠️ No hay filtros aplicados.\n\nAplicá filtros primero para eliminar registros específicos.');
-                    return;
-                }
-                
-                if (confirm(`⚠️ ¿ELIMINAR LOS ${registrosFiltrados.length} REGISTROS FILTRADOS?\n\n¡Esta acción NO se puede deshacer!`)) {
-                    const idsAEliminar = new Set(registrosFiltrados.map(r => r.id));
-                    const nuevos = registros.filter(r => !idsAEliminar.has(r.id));
-                    guardarRegistros(nuevos);
-                    alert(`✅ ${registrosFiltrados.length} registros eliminados`);
-                }
-            };
-            
-            const mostrarMenuEliminacionRegistros = () => {
-                const opciones = `Eliminación masiva de registros:
 
-1️⃣ Eliminar normalizados (${registros.filter(r => r.normalizado).length})
-2️⃣ Eliminar pendientes (${registros.filter(r => !r.normalizado).length})
-3️⃣ Eliminar por rango de fechas
-4️⃣ Eliminar anteriores a fecha
-5️⃣ Eliminar registros filtrados (${registrosFiltrados.length})
-6️⃣ Eliminar TODOS los registros
+            // Filtrar con useMemo
+            const registrosFiltrados = useMemo(() => {
+                return registros.filter(r => {
+                    if (!r || !r.fecha) return false;
+                    if (filtros.fechaInicio && r.fecha < filtros.fechaInicio) return false;
+                    if (filtros.fechaFin && r.fecha > filtros.fechaFin) return false;
+                    if (filtros.clienta && !r.clienta?.toLowerCase().includes(filtros.clienta.toLowerCase())) return false;
+                    if (filtros.servicio && !r.servicios?.some(s => s?.toLowerCase().includes(filtros.servicio.toLowerCase()))) return false;
+                    if (filtros.metodoPago && r.metodoPago !== filtros.metodoPago) return false;
+                    if (filtros.sucursal && r.sucursal !== filtros.sucursal) return false;
+                    return true;
+                }).sort((a,b) => b.fecha.localeCompare(a.fecha));
+            }, [registros, filtros]);
 
-Ingresá el número (1-6):`;
-                
-                const opcion = prompt(opciones);
-                
-                switch(opcion) {
-                    case '1':
-                        eliminarRegistrosPorEstado(true);
-                        break;
-                    case '2':
-                        eliminarRegistrosPorEstado(false);
-                        break;
-                    case '3':
-                        eliminarRegistrosPorRango();
-                        break;
-                    case '4':
-                        eliminarRegistrosAnterioresA();
-                        break;
-                    case '5':
-                        eliminarRegistrosFiltrados();
-                        break;
-                    case '6':
-                        if (confirm('⚠️ ¿ELIMINAR TODOS LOS REGISTROS?\n\n¡NO SE PUEDE DESHACER!')) {
-                            guardarRegistros([]);
-                            alert('✅ Todos los registros eliminados');
-                        }
-                        break;
-                    default:
-                        if (opcion) alert('Opción inválida');
-                }
-            };
-            
-            // Filtrar registros
-            const registrosFiltrados = registros.filter(r => {
-                if (filtros.fechaInicio && r.fecha < filtros.fechaInicio) return false;
-                if (filtros.fechaFin && r.fecha > filtros.fechaFin) return false;
-                if (filtros.clienta && !r.clienta.toLowerCase().includes(filtros.clienta.toLowerCase())) return false;
-                if (filtros.servicio && !r.servicios.some(s => s.toLowerCase().includes(filtros.servicio.toLowerCase()))) return false;
-                if (filtros.metodoPago && r.metodoPago !== filtros.metodoPago) return false;
-                if (filtros.sucursal && r.sucursal !== filtros.sucursal) return false;
-                if (filtros.estado === 'normalizado' && !r.normalizado) return false;
-                if (filtros.estado === 'pendiente' && r.normalizado) return false;
-                return true;
-            });
-            
-            // Estadísticas optimizadas con useMemo
+            // Resetear página al filtrar
+            useEffect(() => { setPaginaActual(1); }, [filtros]);
+
+            // Paginación
+            const totalPaginas = Math.max(1, Math.ceil(registrosFiltrados.length / REGISTROS_POR_PAGINA));
+            const registrosPaginados = useMemo(() => {
+                const ini = (paginaActual - 1) * REGISTROS_POR_PAGINA;
+                return registrosFiltrados.slice(ini, ini + REGISTROS_POR_PAGINA);
+            }, [registrosFiltrados, paginaActual]);
+
+            // Stats
             const stats = useMemo(() => ({
-                totalIngresos: registrosFiltrados.reduce((sum, r) => sum + (r.importe || 0), 0),
+                totalIngresos: registrosFiltrados.reduce((s,r) => s + (r.importe||0), 0),
                 cantidadServicios: registrosFiltrados.length,
-                ticketPromedio: registrosFiltrados.length > 0 
-                    ? registrosFiltrados.reduce((sum, r) => sum + (r.importe || 0), 0) / registrosFiltrados.length 
-                    : 0,
-                clientasUnicas: [...new Set(registrosFiltrados.map(r => r.clienta).filter(c => c))].length
+                ticketPromedio: registrosFiltrados.length > 0 ? registrosFiltrados.reduce((s,r) => s+(r.importe||0), 0) / registrosFiltrados.length : 0,
+                clientasUnicas: new Set(registrosFiltrados.map(r=>r.clienta).filter(Boolean)).size
             }), [registrosFiltrados]);
-            
-            // Servicios más vendidos optimizado
+
             const serviciosMasVendidos = useMemo(() => {
-                const conteo = {};
-                registrosFiltrados.forEach(r => {
-                    if (r.servicios && Array.isArray(r.servicios)) {
-                        r.servicios.forEach(s => {
-                            if (s) conteo[s] = (conteo[s] || 0) + 1;
-                        });
-                    }
-                });
-                return Object.entries(conteo).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                const c = {};
+                registrosFiltrados.forEach(r => r.servicios?.forEach(s => { if(s) c[s]=(c[s]||0)+1; }));
+                return Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,5);
             }, [registrosFiltrados]);
-            
-            // Ingresos por mes optimizado
+
             const ingresosPorMes = useMemo(() => {
-                const meses = {};
+                const m = {};
                 registrosFiltrados.forEach(r => {
                     if (!r.fecha || typeof r.fecha !== 'string') return;
-                    const mes = r.fecha.substring(0, 7);
-                    meses[mes] = (meses[mes] || 0) + (r.importe || 0);
+                    const mes = r.fecha.substring(0,7);
+                    m[mes] = (m[mes]||0) + (r.importe||0);
                 });
-                return Object.entries(meses).sort((a, b) => a[0].localeCompare(b[0]));
+                return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0]));
             }, [registrosFiltrados]);
-            
-            // Exportar a Excel
+
+            // Datos comparativo (todos los registros, no filtrados)
+            const datosComparativo = useMemo(() => {
+                const años = {}, trimestres = {}, mesesPorAño = {}, clientasPorAño = {};
+                registros.forEach(r => {
+                    if (!r?.fecha || typeof r.fecha !== 'string') return;
+                    const parts = r.fecha.split('-');
+                    if (parts.length < 2) return;
+                    const [año, mes] = parts;
+                    const mesNum = parseInt(mes);
+                    const imp = r.importe || 0;
+                    const cl = r.clienta || '';
+                    if (!año || isNaN(mesNum)) return;
+
+                    if (!años[año]) años[año] = { ingresos:0, servicios:0, clientas:new Set() };
+                    años[año].ingresos += imp; años[año].servicios++; if(cl) años[año].clientas.add(cl);
+
+                    const q = mesNum<=3?'Q1':mesNum<=6?'Q2':mesNum<=9?'Q3':'Q4';
+                    const tk = `${q}-${año}`;
+                    if (!trimestres[tk]) trimestres[tk] = { año, trimestre:q, ingresos:0, servicios:0 };
+                    trimestres[tk].ingresos += imp; trimestres[tk].servicios++;
+
+                    if (!mesesPorAño[mes]) mesesPorAño[mes] = {};
+                    mesesPorAño[mes][año] = (mesesPorAño[mes][año]||0) + imp;
+
+                    if (!clientasPorAño[año]) clientasPorAño[año] = {};
+                    if (cl) clientasPorAño[año][cl] = (clientasPorAño[año][cl]||0) + imp;
+                });
+                return { años, trimestres, mesesPorAño, clientasPorAño };
+            }, [registros]);
+
+            // Funciones CRUD
+            const agregarRegistro = async () => {
+                if (!nuevoRegistro.clienta || !nuevoRegistro.servicios.length) { alert('Completá clienta y servicios'); return; }
+                const reg = { ...nuevoRegistro, id: Date.now(), normalizado:true, fechaCreacion: new Date().toISOString() };
+                if (await guardarRegistros([...registros, reg])) {
+                    setNuevoRegistro({ fecha:new Date().toISOString().split('T')[0], clienta:'', servicios:[], importe:0, metodoPago:'efectivo', sucursal:'Bahía Blanca', notas:'' });
+                    setMostrarFormulario(false);
+                    alert('✅ Registro agregado');
+                }
+            };
+
+            const importarDesdeReservas = async () => {
+                const confirmadas = reservas.filter(r => r.estado==='confirmada' && !r.esFicticia);
+                const nuevos = [];
+                confirmadas.forEach(r => {
+                    const existe = registros.some(reg => reg.clienta===r.cliente.nombre && reg.fecha===r.fecha && reg.importe===r.servicios.reduce((s,sv)=>s+sv.precio,0));
+                    if (!existe) nuevos.push({
+                        id: Date.now()+Math.random(), fecha:r.fecha, clienta:r.cliente.nombre,
+                        servicios:r.servicios.map(s=>s.nombre), importe:r.servicios.reduce((s,sv)=>s+sv.precio,0),
+                        metodoPago:'transferencia', sucursal:r.sucursal.nombre, notas:'Importado desde reserva',
+                        normalizado:true, fechaCreacion:new Date().toISOString()
+                    });
+                });
+                if (nuevos.length > 0) {
+                    if (await guardarRegistros([...registros, ...nuevos])) alert(`✅ ${nuevos.length} registros importados`);
+                } else { alert('No hay nuevas reservas para importar'); }
+            };
+
             const exportarExcel = () => {
                 try {
-                    const datos = registrosFiltrados.map(r => ({
-                        Fecha: r.fecha,
-                        Clienta: r.clienta,
-                        Servicios: r.servicios.join(', '),
-                        Importe: r.importe,
-                        'Método Pago': r.metodoPago,
-                        Sucursal: r.sucursal,
-                        Notas: r.notas || ''
-                    }));
-                    
+                    const datos = registrosFiltrados.map(r => ({ Fecha:r.fecha, Clienta:r.clienta, Servicios:r.servicios?.join(', '), Importe:r.importe, 'Método Pago':r.metodoPago, Sucursal:r.sucursal, Notas:r.notas||'' }));
                     const ws = XLSX.utils.json_to_sheet(datos);
                     const wb = XLSX.utils.book_new();
                     XLSX.utils.book_append_sheet(wb, ws, "Registros");
                     XLSX.writeFile(wb, `analisis-aldi-${new Date().toISOString().split('T')[0]}.xlsx`);
-                } catch (error) {
-                    console.error('Error exportando:', error);
-                    alert('❌ Error al exportar. Asegurate de tener datos para exportar.');
-                }
+                } catch(e) { alert('Error exportando: ' + e.message); }
             };
-            
-            // Importar desde Excel
+
             const importarExcel = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                
+                const file = e.target.files[0]; if (!file) return;
                 const reader = new FileReader();
-                reader.onload = async (event) => {
+                reader.onload = async (ev) => {
                     try {
-                        const data = new Uint8Array(event.target.result);
-                        const workbook = XLSX.read(data, {type: 'array'});
-                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const rows = XLSX.utils.sheet_to_json(firstSheet);
-                        
+                        const data = new Uint8Array(ev.target.result);
+                        const wb = XLSX.read(data, {type:'array'});
+                        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
                         const nuevos = rows.map(row => {
-                            // Mapear columnas flexiblemente
-                            let fecha = row.FECHA || row.Fecha || row.fecha || '';
-                            
-                            // Si la fecha es un número de Excel, convertirla
+                            let fecha = row.FECHA||row.Fecha||row.fecha||'';
                             if (typeof fecha === 'number') {
-                                const excelEpoch = new Date(1900, 0, 1);
-                                const dias = fecha - 2; // Excel cuenta desde 1900-01-01 con bug de 1900 leap year
-                                const fechaObj = new Date(excelEpoch.getTime() + dias * 24 * 60 * 60 * 1000);
-                                const y = fechaObj.getFullYear();
-                                const m = String(fechaObj.getMonth() + 1).padStart(2, '0');
-                                const d = String(fechaObj.getDate()).padStart(2, '0');
-                                fecha = `${y}-${m}-${d}`;
+                                const d = new Date(new Date(1900,0,1).getTime() + (fecha-2)*86400000);
+                                fecha = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                            } else if (typeof fecha==='string' && fecha.includes('/')) {
+                                const p = fecha.split('/');
+                                if (p.length===3) fecha = `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
                             }
-                            // Si la fecha es un string tipo "DD/MM/YYYY" o similar, convertirla
-                            else if (typeof fecha === 'string' && fecha.includes('/')) {
-                                const partes = fecha.split('/');
-                                if (partes.length === 3) {
-                                    // Asumir DD/MM/YYYY
-                                    const d = partes[0].padStart(2, '0');
-                                    const m = partes[1].padStart(2, '0');
-                                    const y = partes[2];
-                                    fecha = `${y}-${m}-${d}`;
-                                }
-                            }
-                            // Si la fecha ya está en formato YYYY-MM-DD, dejarla así
-                            
-                            const clienta = row.CLIENTE || row.Cliente || row.Clienta || row.clienta || '';
-                            const servicio = row.SERVICIO || row.Servicio || row.Servicios || row.servicios || '';
-                            const precio = parseFloat(row.PRECIO || row.Precio || row.Importe || row.importe) || 0;
-                            const pago = (row.PAGO || row.Pago || row['Método Pago'] || row.metodoPago || 'efectivo').toString().toLowerCase();
-                            
-                            // Determinar si está normalizado (tiene cliente Y servicio)
-                            const normalizado = !!(clienta && servicio);
-                            
+                            const clienta = row.CLIENTE||row.Cliente||row.Clienta||row.clienta||'';
+                            const servicio = row.SERVICIO||row.Servicio||row.Servicios||row.servicios||'';
+                            const precio = parseFloat(row.PRECIO||row.Precio||row.Importe||row.importe)||0;
                             return {
-                                id: Date.now() + Math.random(),
-                                fecha: fecha,
-                                clienta: clienta,
-                                servicios: servicio ? servicio.toString().split(',').map(s => s.trim()).filter(s => s) : [],
-                                importe: precio,
-                                metodoPago: pago,
-                                sucursal: row.Sucursal || row.sucursal || 'Bahía Blanca',
-                                notas: row.Notas || row.notas || 'Importado de Excel',
-                                normalizado: normalizado,
-                                fechaCreacion: new Date().toISOString()
+                                id: Date.now()+Math.random(), fecha, clienta,
+                                servicios: servicio ? servicio.toString().split(',').map(s=>s.trim()).filter(Boolean) : [],
+                                importe: precio, metodoPago: (row.PAGO||row.Pago||'efectivo').toString().toLowerCase(),
+                                sucursal: row.Sucursal||row.sucursal||'Bahía Blanca', notas: 'Importado de Excel',
+                                normalizado: !!(clienta && servicio), fechaCreacion: new Date().toISOString()
                             };
-                        }).filter(r => {
-                            // Validar que tenga fecha e importe
-                            if (!r.fecha || r.importe <= 0) return false;
-                            
-                            // Validar formato de fecha YYYY-MM-DD
-                            const regexFecha = /^\d{4}-\d{2}-\d{2}$/;
-                            if (!regexFecha.test(r.fecha)) {
-                                console.warn('Fecha con formato inválido:', r.fecha);
-                                return false;
-                            }
-                            
-                            return true;
-                        });
-                        
+                        }).filter(r => r.fecha && r.importe > 0 && /^\d{4}-\d{2}-\d{2}$/.test(r.fecha));
                         if (nuevos.length > 0) {
-                            const sinNormalizar = nuevos.filter(r => !r.normalizado).length;
-                            console.log(`📥 Importando ${nuevos.length} registros a Firebase...`);
-                            console.log('Registros a importar:', nuevos);
-                            
-                            const resultado = await guardarRegistros([...registros, ...nuevos]);
-                            
-                            if (resultado) {
-                                console.log('✅ Registros guardados en Firebase correctamente');
-                                alert(`✅ ${nuevos.length} registros importados y guardados\n\n${sinNormalizar > 0 ? `⚠️ ${sinNormalizar} pendientes de normalizar` : '✅ Todos normalizados'}`);
-                            } else {
-                                console.error('❌ Error: No se pudieron guardar los registros');
-                                alert('❌ Los registros se importaron pero NO se guardaron en Firebase.\n\nVerificá los permisos de Firebase.');
-                            }
-                        } else {
-                            alert('❌ No se encontraron registros válidos.\n\nVerificá que el Excel tenga columnas: FECHA y PRECIO');
-                        }
-                    } catch (error) {
-                        console.error('Error importando:', error);
-                        alert('❌ Error al importar. Verificá el formato del Excel.');
-                    }
+                            if (await guardarRegistros([...registros, ...nuevos])) alert(`✅ ${nuevos.length} registros importados`);
+                        } else { alert('❌ No se encontraron registros válidos.'); }
+                    } catch(err) { alert('❌ Error al importar: ' + err.message); }
                 };
                 reader.readAsArrayBuffer(file);
                 e.target.value = '';
             };
-            
-            if (cargando) {
-                return (
-                    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-                        <div className="text-center">
-                            <div className="text-6xl mb-4">📊</div>
-                            <p className="text-xl font-bold">Cargando análisis...</p>
-                        </div>
-                    </div>
-                );
-            }
-            
+
+            const eliminarMasivo = () => {
+                const opc = prompt(`Eliminación masiva:\n1 - Registros del período filtrado (${registrosFiltrados.length})\n2 - Por rango de fechas\n3 - Anteriores a fecha\n4 - TODOS (${registros.length})\n\nIngresá el número:`);
+                if (!opc) return;
+                if (opc==='1') {
+                    if (registrosFiltrados.length===registros.length) { alert('Aplicá un filtro primero'); return; }
+                    if (!confirm(`⚠️ ¿Eliminar ${registrosFiltrados.length} registros filtrados?\n¡No se puede deshacer!`)) return;
+                    const ids = new Set(registrosFiltrados.map(r=>r.id));
+                    guardarRegistros(registros.filter(r=>!ids.has(r.id)));
+                } else if (opc==='2') {
+                    const ini = prompt('Fecha inicio (YYYY-MM-DD):'); if (!ini) return;
+                    const fin = prompt('Fecha fin (YYYY-MM-DD):'); if (!fin) return;
+                    const a = registros.filter(r=>r.fecha>=ini && r.fecha<=fin);
+                    if (!a.length) { alert('No hay registros en ese rango'); return; }
+                    if (!confirm(`⚠️ ¿Eliminar ${a.length} registros?\n¡No se puede deshacer!`)) return;
+                    guardarRegistros(registros.filter(r=>r.fecha<ini||r.fecha>fin));
+                } else if (opc==='3') {
+                    const f = prompt('Eliminar anteriores a (YYYY-MM-DD):'); if (!f) return;
+                    const a = registros.filter(r=>r.fecha<f);
+                    if (!a.length) { alert('No hay registros anteriores a esa fecha'); return; }
+                    if (!confirm(`⚠️ ¿Eliminar ${a.length} registros?\n¡No se puede deshacer!`)) return;
+                    guardarRegistros(registros.filter(r=>r.fecha>=f));
+                } else if (opc==='4') {
+                    if (!confirm(`⚠️ ¿ELIMINAR LOS ${registros.length} REGISTROS?\n¡NO SE PUEDE DESHACER!`)) return;
+                    guardarRegistros([]);
+                }
+            };
+
+            if (cargando) return (
+                <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+                    <div className="text-center"><div className="text-6xl mb-4">📊</div><p className="text-xl font-bold">Cargando análisis...</p></div>
+                </div>
+            );
+
             return (
                 <div className="min-h-screen bg-gray-100">
                     <header className="bg-white shadow p-4">
-                        <div className="max-w-7xl mx-auto flex justify-between items-center">
+                        <div className="max-w-7xl mx-auto flex justify-between items-center flex-wrap gap-2">
                             <h1 className="text-xl font-bold">📊 Análisis de Negocio</h1>
-                            <div className="flex gap-2">
-                                <button onClick={() => setVistaActual('dashboard')} 
-                                    className={`px-4 py-2 rounded-lg text-sm ${vistaActual === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
-                                    Dashboard
-                                </button>
-                                <button onClick={() => setVistaActual('registros')} 
-                                    className={`px-4 py-2 rounded-lg text-sm ${vistaActual === 'registros' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
-                                    Registros ({registros.length})
-                                </button>
-                                <button onClick={() => setVistaActual('comparativo')} 
-                                    className={`px-4 py-2 rounded-lg text-sm ${vistaActual === 'comparativo' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
-                                    📊 Comparativo
-                                </button>
-                                <button onClick={() => setView('admin')} className="px-4 py-2 bg-gray-100 rounded-lg text-sm">← Volver</button>
+                            <div className="flex gap-2 flex-wrap">
+                                {['dashboard','registros','comparativo'].map(v => (
+                                    <button key={v} onClick={() => setVistaActual(v)}
+                                        className={`px-4 py-2 rounded-lg text-sm ${vistaActual===v?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200'}`}>
+                                        {v==='dashboard'?'Dashboard':v==='registros'?`Registros (${registros.length})`:'📊 Comparativo'}
+                                    </button>
+                                ))}
+                                <button onClick={() => setView('admin')} className="px-4 py-2 bg-gray-100 rounded-lg text-sm hover:bg-gray-200">← Volver</button>
                             </div>
                         </div>
                     </header>
-                    
+
                     <div className="max-w-7xl mx-auto p-4 space-y-6">
+
+                        {/* ===== DASHBOARD ===== */}
                         {vistaActual === 'dashboard' && (
                             <>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                    <div className="bg-white p-6 rounded-xl shadow">
-                                        <p className="text-gray-500 text-sm">Ingresos Totales</p>
-                                        <p className="text-3xl font-bold text-green-600">${formatearNumero(stats.totalIngresos)}</p>
-                                    </div>
-                                    <div className="bg-white p-6 rounded-xl shadow">
-                                        <p className="text-gray-500 text-sm">Servicios</p>
-                                        <p className="text-3xl font-bold text-blue-600">{stats.cantidadServicios}</p>
-                                    </div>
-                                    <div className="bg-white p-6 rounded-xl shadow">
-                                        <p className="text-gray-500 text-sm">Ticket Promedio</p>
-                                        <p className="text-3xl font-bold text-purple-600">${formatearNumero(Math.round(stats.ticketPromedio))}</p>
-                                    </div>
-                                    <div className="bg-white p-6 rounded-xl shadow">
-                                        <p className="text-gray-500 text-sm">Clientas</p>
-                                        <p className="text-3xl font-bold text-pink-600">{stats.clientasUnicas}</p>
-                                    </div>
+                                    {[
+                                        {label:'Ingresos Totales', val:`$${formatearNumero(stats.totalIngresos)}`, color:'text-green-600'},
+                                        {label:'Servicios', val:stats.cantidadServicios, color:'text-blue-600'},
+                                        {label:'Ticket Promedio', val:`$${formatearNumero(Math.round(stats.ticketPromedio))}`, color:'text-purple-600'},
+                                        {label:'Clientas Únicas', val:stats.clientasUnicas, color:'text-pink-600'},
+                                    ].map(({label,val,color}) => (
+                                        <div key={label} className="bg-white p-6 rounded-xl shadow">
+                                            <p className="text-gray-500 text-sm">{label}</p>
+                                            <p className={`text-3xl font-bold ${color}`}>{val}</p>
+                                        </div>
+                                    ))}
                                 </div>
-                                
+
                                 <div className="bg-white p-6 rounded-xl shadow">
                                     <h3 className="font-bold mb-4">🔍 Filtros</h3>
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                        <div>
-                                            <label className="block text-sm mb-1">Desde</label>
-                                            <input type="date" value={filtros.fechaInicio} 
-                                                onChange={(e) => setFiltros({...filtros, fechaInicio: e.target.value})}
-                                                className="w-full p-2 border rounded" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm mb-1">Hasta</label>
-                                            <input type="date" value={filtros.fechaFin} 
-                                                onChange={(e) => setFiltros({...filtros, fechaFin: e.target.value})}
-                                                className="w-full p-2 border rounded" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm mb-1">Clienta</label>
-                                            <input type="text" placeholder="Buscar..." value={filtros.clienta}
-                                                onChange={(e) => setFiltros({...filtros, clienta: e.target.value})}
-                                                className="w-full p-2 border rounded" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm mb-1">Servicio</label>
-                                            <input type="text" placeholder="Buscar..." value={filtros.servicio}
-                                                onChange={(e) => setFiltros({...filtros, servicio: e.target.value})}
-                                                className="w-full p-2 border rounded" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm mb-1">Método Pago</label>
-                                            <select value={filtros.metodoPago}
-                                                onChange={(e) => setFiltros({...filtros, metodoPago: e.target.value})}
-                                                className="w-full p-2 border rounded">
+                                        <div><label className="block text-sm mb-1">Desde</label>
+                                            <input type="date" value={filtros.fechaInicio} onChange={e=>setFiltros({...filtros,fechaInicio:e.target.value})} className="w-full p-2 border rounded"/></div>
+                                        <div><label className="block text-sm mb-1">Hasta</label>
+                                            <input type="date" value={filtros.fechaFin} onChange={e=>setFiltros({...filtros,fechaFin:e.target.value})} className="w-full p-2 border rounded"/></div>
+                                        <div><label className="block text-sm mb-1">Clienta</label>
+                                            <input type="text" placeholder="Buscar..." value={filtros.clienta} onChange={e=>setFiltros({...filtros,clienta:e.target.value})} className="w-full p-2 border rounded"/></div>
+                                        <div><label className="block text-sm mb-1">Servicio</label>
+                                            <input type="text" placeholder="Buscar..." value={filtros.servicio} onChange={e=>setFiltros({...filtros,servicio:e.target.value})} className="w-full p-2 border rounded"/></div>
+                                        <div><label className="block text-sm mb-1">Método Pago</label>
+                                            <select value={filtros.metodoPago} onChange={e=>setFiltros({...filtros,metodoPago:e.target.value})} className="w-full p-2 border rounded">
                                                 <option value="">Todos</option>
                                                 <option value="efectivo">Efectivo</option>
                                                 <option value="transferencia">Transferencia</option>
                                                 <option value="mercadopago">MercadoPago</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm mb-1">Sucursal</label>
-                                            <select value={filtros.sucursal}
-                                                onChange={(e) => setFiltros({...filtros, sucursal: e.target.value})}
-                                                className="w-full p-2 border rounded">
+                                            </select></div>
+                                        <div><label className="block text-sm mb-1">Sucursal</label>
+                                            <select value={filtros.sucursal} onChange={e=>setFiltros({...filtros,sucursal:e.target.value})} className="w-full p-2 border rounded">
                                                 <option value="">Todas</option>
                                                 <option value="Bahía Blanca">Bahía Blanca</option>
-                                                <option value="Punta Alta">Punta Alta</option>
-                                            </select>
-                                        </div>
+                                                <option value="Patagones">Patagones</option>
+                                            </select></div>
                                     </div>
-                                    {(filtros.fechaInicio || filtros.fechaFin || filtros.clienta || filtros.servicio || filtros.metodoPago || filtros.sucursal) && (
-                                        <button onClick={() => setFiltros({fechaInicio: '', fechaFin: '', clienta: '', servicio: '', metodoPago: '', sucursal: ''})}
-                                            className="mt-4 text-sm text-blue-600 hover:underline">
-                                            Limpiar filtros
-                                        </button>
+                                    {Object.values(filtros).some(Boolean) && (
+                                        <button onClick={()=>setFiltros({fechaInicio:'',fechaFin:'',clienta:'',servicio:'',metodoPago:'',sucursal:''})}
+                                            className="mt-4 text-sm text-blue-600 hover:underline">✕ Limpiar filtros</button>
                                     )}
                                 </div>
-                                
+
                                 <div className="grid md:grid-cols-2 gap-6">
                                     <div className="bg-white p-6 rounded-xl shadow">
                                         <h3 className="font-bold mb-4">🏆 Servicios Más Vendidos</h3>
-                                        {serviciosMasVendidos.length > 0 ? serviciosMasVendidos.map(([servicio, cantidad]) => (
-                                            <div key={servicio} className="mb-3">
+                                        {serviciosMasVendidos.length > 0 ? serviciosMasVendidos.map(([s,c]) => (
+                                            <div key={s} className="mb-3">
                                                 <div className="flex justify-between mb-1">
-                                                    <span className="text-sm font-medium">{servicio}</span>
-                                                    <span className="text-sm text-gray-600">{cantidad}</span>
+                                                    <span className="text-sm font-medium">{s}</span>
+                                                    <span className="text-sm text-gray-600">{c}</span>
                                                 </div>
                                                 <div className="w-full bg-gray-200 rounded-full h-2">
-                                                    <div className="bg-blue-600 h-2 rounded-full" 
-                                                        style={{width: `${(cantidad / registrosFiltrados.length) * 100}%`}}></div>
+                                                    <div className="bg-blue-600 h-2 rounded-full" style={{width:`${(c/registrosFiltrados.length)*100}%`}}></div>
                                                 </div>
                                             </div>
-                                        )) : <p className="text-gray-500 text-sm">No hay datos para mostrar</p>}
+                                        )) : <p className="text-gray-500 text-sm">Sin datos</p>}
                                     </div>
-                                    
                                     <div className="bg-white p-6 rounded-xl shadow">
-                                        <h3 className="font-bold mb-4">📈 Ingresos por Mes</h3>
+                                        <h3 className="font-bold mb-4">📈 Ingresos Últimos 6 Meses</h3>
                                         {ingresosPorMes.length > 0 ? (() => {
-                                            const ultimos6 = ingresosPorMes.slice(-6);
-                                            const maxTotal = Math.max(...ingresosPorMes.map(m => m[1]));
-                                            
-                                            return ultimos6.map(([mes, total]) => (
+                                            const ult = ingresosPorMes.slice(-6);
+                                            const mx = Math.max(...ult.map(m=>m[1]));
+                                            return ult.map(([mes,total]) => (
                                                 <div key={mes} className="mb-3">
                                                     <div className="flex justify-between mb-1">
                                                         <span className="text-sm font-medium">{mes}</span>
                                                         <span className="text-sm text-green-600 font-bold">${formatearNumero(total)}</span>
                                                     </div>
                                                     <div className="w-full bg-gray-200 rounded-full h-2">
-                                                        <div className="bg-green-600 h-2 rounded-full" 
-                                                            style={{width: `${(total / maxTotal) * 100}%`}}></div>
+                                                        <div className="bg-green-600 h-2 rounded-full" style={{width:`${(total/mx)*100}%`}}></div>
                                                     </div>
                                                 </div>
                                             ));
-                                        })() : <p className="text-gray-500 text-sm">No hay datos para mostrar</p>}
+                                        })() : <p className="text-gray-500 text-sm">Sin datos</p>}
                                     </div>
                                 </div>
                             </>
                         )}
-                        
+
+                        {/* ===== REGISTROS ===== */}
                         {vistaActual === 'registros' && (
                             <>
                                 <div className="flex gap-2 flex-wrap">
-                                    <button onClick={() => setMostrarFormulario(!mostrarFormulario)}
-                                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-                                        + Agregar Registro
-                                    </button>
-                                    <button onClick={importarDesdeReservas}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                                        📥 Importar Reservas
-                                    </button>
-                                    <button onClick={exportarExcel}
-                                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
-                                        📤 Exportar Excel
-                                    </button>
+                                    <button onClick={()=>setMostrarFormulario(!mostrarFormulario)} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">+ Agregar</button>
+                                    <button onClick={importarDesdeReservas} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">📥 Importar Reservas</button>
+                                    <button onClick={exportarExcel} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">📤 Exportar Excel</button>
                                     <label className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 cursor-pointer">
-                                        📂 Importar Excel
-                                        <input type="file" accept=".xlsx,.xls" onChange={importarExcel} className="hidden" />
+                                        📂 Importar Excel<input type="file" accept=".xlsx,.xls" onChange={importarExcel} className="hidden"/>
                                     </label>
                                     {registros.length > 0 && (
-                                        <button onClick={mostrarMenuEliminacionRegistros}
-                                            className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200">
-                                            🗑️ Eliminación Masiva
-                                        </button>
+                                        <button onClick={eliminarMasivo} className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200">🗑️ Eliminar Masivo</button>
                                     )}
-                                    <button onClick={diagnosticarFirebase}
-                                        className="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200">
-                                        🔍 Test Firebase
-                                    </button>
                                 </div>
-                                
+
+                                {/* Filtros rápidos en Registros */}
+                                <div className="bg-white p-4 rounded-xl shadow">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        <input type="date" placeholder="Desde" value={filtros.fechaInicio} onChange={e=>setFiltros({...filtros,fechaInicio:e.target.value})} className="p-2 border rounded text-sm"/>
+                                        <input type="date" placeholder="Hasta" value={filtros.fechaFin} onChange={e=>setFiltros({...filtros,fechaFin:e.target.value})} className="p-2 border rounded text-sm"/>
+                                        <input type="text" placeholder="🔍 Clienta..." value={filtros.clienta} onChange={e=>setFiltros({...filtros,clienta:e.target.value})} className="p-2 border rounded text-sm"/>
+                                        <input type="text" placeholder="🔍 Servicio..." value={filtros.servicio} onChange={e=>setFiltros({...filtros,servicio:e.target.value})} className="p-2 border rounded text-sm"/>
+                                    </div>
+                                    {Object.values(filtros).some(Boolean) && (
+                                        <button onClick={()=>setFiltros({fechaInicio:'',fechaFin:'',clienta:'',servicio:'',metodoPago:'',sucursal:''})}
+                                            className="mt-2 text-xs text-blue-600 hover:underline">✕ Limpiar filtros</button>
+                                    )}
+                                </div>
+
                                 {mostrarFormulario && (
                                     <div className="bg-white p-6 rounded-xl shadow">
                                         <h3 className="font-bold mb-4">Nuevo Registro</h3>
                                         <div className="grid md:grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-sm mb-1">Fecha</label>
-                                                <input type="date" value={nuevoRegistro.fecha}
-                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, fecha: e.target.value})}
-                                                    className="w-full p-2 border rounded" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm mb-1">Clienta</label>
-                                                <input type="text" value={nuevoRegistro.clienta}
-                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, clienta: e.target.value})}
-                                                    className="w-full p-2 border rounded" placeholder="Nombre de la clienta" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm mb-1">Servicios</label>
-                                                <select multiple value={nuevoRegistro.servicios}
-                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, servicios: Array.from(e.target.selectedOptions, option => option.value)})}
-                                                    className="w-full p-2 border rounded h-24">
-                                                    {servicios.map(s => (
-                                                        <option key={s.id} value={s.nombre}>{s.nombre} - ${s.precio}</option>
-                                                    ))}
-                                                </select>
-                                                <p className="text-xs text-gray-500 mt-1">Mantené Ctrl para seleccionar varios</p>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm mb-1">Importe ($)</label>
-                                                <input type="number" value={nuevoRegistro.importe}
-                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, importe: parseFloat(e.target.value) || 0})}
-                                                    className="w-full p-2 border rounded" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm mb-1">Método Pago</label>
-                                                <select value={nuevoRegistro.metodoPago}
-                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, metodoPago: e.target.value})}
-                                                    className="w-full p-2 border rounded">
+                                            <div><label className="block text-sm mb-1">Fecha</label>
+                                                <input type="date" value={nuevoRegistro.fecha} onChange={e=>setNuevoRegistro({...nuevoRegistro,fecha:e.target.value})} className="w-full p-2 border rounded"/></div>
+                                            <div><label className="block text-sm mb-1">Clienta</label>
+                                                <input type="text" value={nuevoRegistro.clienta} onChange={e=>setNuevoRegistro({...nuevoRegistro,clienta:e.target.value})} className="w-full p-2 border rounded" placeholder="Nombre"/></div>
+                                            <div><label className="block text-sm mb-1">Servicios (separados por coma)</label>
+                                                <input type="text" value={nuevoRegistro.servicios.join(', ')} onChange={e=>setNuevoRegistro({...nuevoRegistro,servicios:e.target.value.split(',').map(s=>s.trim()).filter(Boolean)})} className="w-full p-2 border rounded" placeholder="Manicura, Pedicura"/></div>
+                                            <div><label className="block text-sm mb-1">Importe $</label>
+                                                <input type="number" value={nuevoRegistro.importe} onChange={e=>setNuevoRegistro({...nuevoRegistro,importe:parseFloat(e.target.value)||0})} className="w-full p-2 border rounded"/></div>
+                                            <div><label className="block text-sm mb-1">Método de Pago</label>
+                                                <select value={nuevoRegistro.metodoPago} onChange={e=>setNuevoRegistro({...nuevoRegistro,metodoPago:e.target.value})} className="w-full p-2 border rounded">
                                                     <option value="efectivo">Efectivo</option>
                                                     <option value="transferencia">Transferencia</option>
                                                     <option value="mercadopago">MercadoPago</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm mb-1">Sucursal</label>
-                                                <select value={nuevoRegistro.sucursal}
-                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, sucursal: e.target.value})}
-                                                    className="w-full p-2 border rounded">
-                                                    <option value="Bahía Blanca">Bahía Blanca</option>
-                                                    <option value="Punta Alta">Punta Alta</option>
-                                                </select>
-                                            </div>
-                                            <div className="md:col-span-2">
-                                                <label className="block text-sm mb-1">Notas (opcional)</label>
-                                                <input type="text" value={nuevoRegistro.notas}
-                                                    onChange={(e) => setNuevoRegistro({...nuevoRegistro, notas: e.target.value})}
-                                                    className="w-full p-2 border rounded" placeholder="Notas adicionales" />
-                                            </div>
+                                                </select></div>
+                                            <div><label className="block text-sm mb-1">Sucursal</label>
+                                                <select value={nuevoRegistro.sucursal} onChange={e=>setNuevoRegistro({...nuevoRegistro,sucursal:e.target.value})} className="w-full p-2 border rounded">
+                                                    <option>Bahía Blanca</option>
+                                                    <option>Patagones</option>
+                                                </select></div>
                                         </div>
                                         <div className="flex gap-2 mt-4">
-                                            <button onClick={agregarRegistro} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-                                                ✓ Guardar
-                                            </button>
-                                            <button onClick={() => setMostrarFormulario(false)} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">
-                                                Cancelar
-                                            </button>
+                                            <button onClick={agregarRegistro} className="px-4 py-2 bg-green-600 text-white rounded-lg">✓ Guardar</button>
+                                            <button onClick={()=>setMostrarFormulario(false)} className="px-4 py-2 bg-gray-200 rounded-lg">Cancelar</button>
                                         </div>
                                     </div>
                                 )}
-                                
+
                                 <div className="bg-white rounded-xl shadow overflow-hidden">
+                                    <div className="p-4 border-b flex justify-between items-center flex-wrap gap-2">
+                                        <p className="text-sm text-gray-600">
+                                            {registrosFiltrados.length === registros.length ? `${registros.length} registros` : `${registrosFiltrados.length} de ${registros.length}`}
+                                            {` · Pág. ${paginaActual}/${totalPaginas}`}
+                                        </p>
+                                        {totalPaginas > 1 && (
+                                            <div className="flex gap-1 items-center">
+                                                <button onClick={()=>setPaginaActual(1)} disabled={paginaActual===1} className="px-2 py-1 text-sm border rounded disabled:opacity-40">«</button>
+                                                <button onClick={()=>setPaginaActual(p=>Math.max(1,p-1))} disabled={paginaActual===1} className="px-3 py-1 text-sm border rounded disabled:opacity-40">‹</button>
+                                                {[...Array(Math.min(5,totalPaginas))].map((_,i) => {
+                                                    let p = totalPaginas<=5 ? i+1 : paginaActual<=3 ? i+1 : paginaActual>=totalPaginas-2 ? totalPaginas-4+i : paginaActual-2+i;
+                                                    return <button key={p} onClick={()=>setPaginaActual(p)} className={`px-3 py-1 text-sm border rounded ${paginaActual===p?'bg-blue-600 text-white':''}`}>{p}</button>;
+                                                })}
+                                                <button onClick={()=>setPaginaActual(p=>Math.min(totalPaginas,p+1))} disabled={paginaActual===totalPaginas} className="px-3 py-1 text-sm border rounded disabled:opacity-40">›</button>
+                                                <button onClick={()=>setPaginaActual(totalPaginas)} disabled={paginaActual===totalPaginas} className="px-2 py-1 text-sm border rounded disabled:opacity-40">»</button>
+                                            </div>
+                                        )}
+                                    </div>
                                     <div className="overflow-x-auto">
                                         <table className="w-full">
                                             <thead className="bg-gray-100">
                                                 <tr>
-                                                    <th className="p-3 text-left text-sm font-semibold">Fecha</th>
-                                                    <th className="p-3 text-left text-sm font-semibold">Clienta</th>
-                                                    <th className="p-3 text-left text-sm font-semibold">Servicios</th>
-                                                    <th className="p-3 text-left text-sm font-semibold">Importe</th>
-                                                    <th className="p-3 text-left text-sm font-semibold">Pago</th>
-                                                    <th className="p-3 text-left text-sm font-semibold">Sucursal</th>
-                                                    <th className="p-3 text-left text-sm font-semibold">Acción</th>
+                                                    {['Fecha','Clienta','Servicios','Importe','Pago','Sucursal',''].map(h => (
+                                                        <th key={h} className="p-3 text-left text-sm font-semibold">{h}</th>
+                                                    ))}
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {registrosFiltrados.map(r => (
+                                                {registrosPaginados.map(r => (
                                                     <tr key={r.id} className="border-t hover:bg-gray-50">
-                                                        <td className="p-3 text-sm">{r.fecha ? (() => {
-                                                            const [y, m, d] = r.fecha.split('-').map(Number);
-                                                            const fecha = new Date(y, m - 1, d);
-                                                            return fecha.toLocaleDateString('es-AR');
-                                                        })() : 'Sin fecha'}</td>
+                                                        <td className="p-3 text-sm">{(() => { try { const [y,m,d]=r.fecha.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('es-AR'); } catch{ return r.fecha; } })()}</td>
                                                         <td className="p-3 text-sm font-medium">{r.clienta}</td>
-                                                        <td className="p-3 text-sm text-gray-600">{r.servicios.join(', ')}</td>
+                                                        <td className="p-3 text-sm text-gray-600 max-w-xs truncate">{r.servicios?.join(', ')}</td>
                                                         <td className="p-3 text-sm font-bold text-green-600">${formatearNumero(r.importe)}</td>
                                                         <td className="p-3 text-sm capitalize">{r.metodoPago}</td>
                                                         <td className="p-3 text-sm">{r.sucursal}</td>
-                                                        <td className="p-3 text-sm">
-                                                            <button onClick={() => {
-                                                                if (confirm('¿Eliminar este registro?\n\nNo se puede deshacer.')) {
-                                                                    guardarRegistros(registros.filter(reg => reg.id !== r.id));
-                                                                }
-                                                            }} className="text-red-600 hover:text-red-800 text-xs font-semibold">
-                                                                🗑️
-                                                            </button>
+                                                        <td className="p-3">
+                                                            <button onClick={()=>{ if(confirm('¿Eliminar?')) guardarRegistros(registros.filter(x=>x.id!==r.id)); }}
+                                                                className="text-red-500 hover:text-red-700 text-sm">🗑️</button>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -1352,377 +1092,190 @@ Ingresá el número (1-6):`;
                                         </table>
                                         {registrosFiltrados.length === 0 && (
                                             <div className="p-12 text-center text-gray-500">
-                                                <div className="text-6xl mb-4">📊</div>
-                                                <p className="text-lg font-medium">No hay registros</p>
-                                                <p className="text-sm mt-2">Agregá tu primer registro, importá tu historial desde Excel, o importá desde reservas confirmadas</p>
+                                                <div className="text-5xl mb-3">📊</div>
+                                                <p className="font-medium">No hay registros</p>
+                                                <p className="text-sm mt-1">Agregá registros, importá desde Excel o desde reservas confirmadas</p>
                                             </div>
                                         )}
                                     </div>
+                                    {totalPaginas > 1 && (
+                                        <div className="p-4 border-t flex justify-center gap-2">
+                                            <button onClick={()=>setPaginaActual(p=>Math.max(1,p-1))} disabled={paginaActual===1} className="px-4 py-2 text-sm border rounded disabled:opacity-40 hover:bg-gray-100">‹ Anterior</button>
+                                            <span className="px-4 py-2 text-sm text-gray-600">{paginaActual} / {totalPaginas}</span>
+                                            <button onClick={()=>setPaginaActual(p=>Math.min(totalPaginas,p+1))} disabled={paginaActual===totalPaginas} className="px-4 py-2 text-sm border rounded disabled:opacity-40 hover:bg-gray-100">Siguiente ›</button>
+                                        </div>
+                                    )}
                                 </div>
                             </>
                         )}
-                        
+
+                        {/* ===== COMPARATIVO ===== */}
                         {vistaActual === 'comparativo' && (
                             <>
+                                {/* Interanual */}
                                 <div className="bg-white p-6 rounded-xl shadow">
-                                    <h2 className="text-2xl font-bold mb-4">📊 Análisis Comparativo</h2>
-                                    <p className="text-gray-600 mb-6">Compará períodos para identificar tendencias y crecimiento</p>
-                                    
-                                    {/* Comparación por Año */}
-                                    <div className="mb-8">
-                                        <h3 className="text-xl font-bold mb-4">📅 Comparación Interanual</h3>
-                                        {(() => {
-                                            const años = {};
-                                            registros.forEach(r => {
-                                                if (!r.fecha) return;
-                                                const año = r.fecha.substring(0, 4);
-                                                if (!años[año]) años[año] = { ingresos: 0, servicios: 0, clientas: new Set() };
-                                                años[año].ingresos += r.importe;
-                                                años[año].servicios += 1;
-                                                años[año].clientas.add(r.clienta);
-                                            });
-                                            
-                                            const añosData = Object.entries(años)
-                                                .map(([año, data]) => ({
-                                                    año,
-                                                    ingresos: data.ingresos,
-                                                    servicios: data.servicios,
-                                                    clientas: data.clientas.size
-                                                }))
-                                                .sort((a, b) => a.año.localeCompare(b.año));
-                                            
-                                            if (añosData.length === 0) {
-                                                return <p className="text-gray-500">No hay datos para comparar</p>;
-                                            }
-                                            
-                                            const maxIngresos = Math.max(...añosData.map(a => a.ingresos));
-                                            
-                                            return (
-                                                <div className="space-y-6">
-                                                    {añosData.map((data, idx) => {
-                                                        const anterior = idx > 0 ? añosData[idx - 1] : null;
-                                                        const crecimiento = anterior ? ((data.ingresos - anterior.ingresos) / anterior.ingresos * 100) : 0;
-                                                        
-                                                        return (
-                                                            <div key={data.año} className="border-l-4 border-blue-500 pl-4">
-                                                                <div className="flex items-center justify-between mb-2">
-                                                                    <div>
-                                                                        <h4 className="text-lg font-bold">{data.año}</h4>
-                                                                        {anterior && (
-                                                                            <span className={`text-sm ${crecimiento >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                                {crecimiento >= 0 ? '📈' : '📉'} {crecimiento >= 0 ? '+' : ''}{crecimiento.toFixed(1)}% vs {anterior.año}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="text-right">
-                                                                        <p className="text-2xl font-bold text-green-600">${formatearNumero(data.ingresos)}</p>
-                                                                        <p className="text-sm text-gray-600">{data.servicios} servicios · {data.clientas} clientas</p>
-                                                                    </div>
+                                    <h3 className="text-xl font-bold mb-4">📅 Comparación Interanual</h3>
+                                    {(() => {
+                                        const añosData = Object.entries(datosComparativo.años)
+                                            .map(([año,d]) => ({ año, ingresos:d.ingresos, servicios:d.servicios, clientas:d.clientas.size }))
+                                            .sort((a,b)=>a.año.localeCompare(b.año));
+                                        if (!añosData.length) return <p className="text-gray-500">Sin datos</p>;
+                                        const mx = Math.max(...añosData.map(d=>d.ingresos));
+                                        return (
+                                            <div className="space-y-4">
+                                                {añosData.map((d,i) => {
+                                                    const ant = i>0?añosData[i-1]:null;
+                                                    const crec = ant?((d.ingresos-ant.ingresos)/ant.ingresos*100):0;
+                                                    return (
+                                                        <div key={d.año} className="border-l-4 border-blue-500 pl-4">
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <div>
+                                                                    <span className="text-lg font-bold">{d.año}</span>
+                                                                    {ant && <span className={`ml-2 text-sm ${crec>=0?'text-green-600':'text-red-600'}`}>{crec>=0?'📈':'📉'} {crec>=0?'+':''}{crec.toFixed(1)}%</span>}
                                                                 </div>
-                                                                <div className="w-full bg-gray-200 rounded-full h-3">
-                                                                    <div className="bg-gradient-to-r from-blue-500 to-green-500 h-3 rounded-full transition-all" 
-                                                                        style={{width: `${(data.ingresos / maxIngresos) * 100}%`}}></div>
+                                                                <div className="text-right">
+                                                                    <p className="text-2xl font-bold text-green-600">${formatearNumero(d.ingresos)}</p>
+                                                                    <p className="text-sm text-gray-500">{d.servicios} servicios · {d.clientas} clientas</p>
                                                                 </div>
                                                             </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            );
-                                        })()}
-                                    </div>
-                                    
-                                    {/* Comparación Trimestral Anualizada */}
-                                    <div className="mb-8">
-                                        <h3 className="text-xl font-bold mb-4">📊 Comparación Trimestral Anualizada</h3>
-                                        <p className="text-sm text-gray-600 mb-4">Visualiza el desempeño de cada trimestre a lo largo de los años</p>
-                                        {(() => {
-                                            // Agrupar por trimestre y año
-                                            const trimestres = {};
-                                            registros.forEach(r => {
-                                                if (!r.fecha) return;
-                                                const [año, mes] = r.fecha.split('-');
-                                                const mesNum = parseInt(mes);
-                                                let trimestre;
-                                                if (mesNum >= 1 && mesNum <= 3) trimestre = 'Q1';
-                                                else if (mesNum >= 4 && mesNum <= 6) trimestre = 'Q2';
-                                                else if (mesNum >= 7 && mesNum <= 9) trimestre = 'Q3';
-                                                else trimestre = 'Q4';
-                                                
-                                                const key = `${trimestre}-${año}`;
-                                                if (!trimestres[key]) {
-                                                    trimestres[key] = { 
-                                                        año, 
-                                                        trimestre, 
-                                                        ingresos: 0, 
-                                                        servicios: 0,
-                                                        clientas: new Set()
-                                                    };
-                                                }
-                                                trimestres[key].ingresos += r.importe;
-                                                trimestres[key].servicios += 1;
-                                                trimestres[key].clientas.add(r.clienta);
-                                            });
-                                            
-                                            // Ordenar por año y trimestre
-                                            const trimestresData = Object.values(trimestres)
-                                                .map(t => ({
-                                                    ...t,
-                                                    clientas: t.clientas.size
-                                                }))
-                                                .sort((a, b) => {
-                                                    if (a.año !== b.año) return a.año.localeCompare(b.año);
-                                                    const orden = { Q1: 1, Q2: 2, Q3: 3, Q4: 4 };
-                                                    return orden[a.trimestre] - orden[b.trimestre];
-                                                });
-                                            
-                                            if (trimestresData.length === 0) {
-                                                return <p className="text-gray-500">No hay datos para mostrar</p>;
-                                            }
-                                            
-                                            // Agrupar por trimestre para comparar entre años
-                                            const porTrimestre = {
-                                                Q1: trimestresData.filter(t => t.trimestre === 'Q1'),
-                                                Q2: trimestresData.filter(t => t.trimestre === 'Q2'),
-                                                Q3: trimestresData.filter(t => t.trimestre === 'Q3'),
-                                                Q4: trimestresData.filter(t => t.trimestre === 'Q4')
-                                            };
-                                            
-                                            const nombresTrimestre = {
-                                                Q1: '1° Trimestre (Ene-Mar)',
-                                                Q2: '2° Trimestre (Abr-Jun)',
-                                                Q3: '3° Trimestre (Jul-Sep)',
-                                                Q4: '4° Trimestre (Oct-Dic)'
-                                            };
-                                            
-                                            const colores = {
-                                                Q1: 'from-blue-500 to-blue-600',
-                                                Q2: 'from-green-500 to-green-600',
-                                                Q3: 'from-orange-500 to-orange-600',
-                                                Q4: 'from-purple-500 to-purple-600'
-                                            };
-                                            
-                                            return (
-                                                <div className="space-y-6">
-                                                    {Object.entries(porTrimestre).map(([trimestre, datos]) => {
-                                                        if (datos.length === 0) return null;
-                                                        
-                                                        const maxIngresos = Math.max(...datos.map(d => d.ingresos));
-                                                        
-                                                        return (
-                                                            <div key={trimestre} className="border rounded-lg p-4 bg-gray-50">
-                                                                <h4 className="font-bold text-lg mb-3">{nombresTrimestre[trimestre]}</h4>
-                                                                <div className="space-y-3">
-                                                                    {datos.map((data, idx) => {
-                                                                        const anterior = idx > 0 ? datos[idx - 1] : null;
-                                                                        const crecimiento = anterior 
-                                                                            ? ((data.ingresos - anterior.ingresos) / anterior.ingresos * 100) 
-                                                                            : 0;
-                                                                        
-                                                                        return (
-                                                                            <div key={`${trimestre}-${data.año}`} className="bg-white rounded-lg p-3 shadow-sm">
-                                                                                <div className="flex items-center justify-between mb-2">
-                                                                                    <div className="flex items-center gap-3">
-                                                                                        <span className="font-bold text-gray-700">{data.año}</span>
-                                                                                        {anterior && (
-                                                                                            <span className={`text-xs px-2 py-1 rounded-full ${
-                                                                                                crecimiento >= 0 
-                                                                                                    ? 'bg-green-100 text-green-700' 
-                                                                                                    : 'bg-red-100 text-red-700'
-                                                                                            }`}>
-                                                                                                {crecimiento >= 0 ? '↗' : '↘'} {crecimiento >= 0 ? '+' : ''}{crecimiento.toFixed(1)}%
-                                                                                            </span>
-                                                                                        )}
-                                                                                    </div>
-                                                                                    <div className="text-right">
-                                                                                        <p className="font-bold text-green-600">${formatearNumero(data.ingresos)}</p>
-                                                                                        <p className="text-xs text-gray-600">{data.servicios} servicios · {data.clientas} clientas</p>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                                                                    <div className={`bg-gradient-to-r ${colores[trimestre]} h-2 rounded-full transition-all`}
-                                                                                        style={{width: `${(data.ingresos / maxIngresos) * 100}%`}}></div>
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                                </div>
+                                                            <div className="w-full bg-gray-200 rounded-full h-3">
+                                                                <div className="bg-gradient-to-r from-blue-500 to-green-500 h-3 rounded-full" style={{width:`${(d.ingresos/mx)*100}%`}}></div>
                                                             </div>
-                                                        );
-                                                    })}
-                                                    
-                                                    {/* Resumen comparativo entre trimestres */}
-                                                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border-2 border-blue-200">
-                                                        <h4 className="font-bold mb-3">📈 Resumen de Trimestres</h4>
-                                                        <div className="grid md:grid-cols-4 gap-3">
-                                                            {Object.entries(porTrimestre).map(([trimestre, datos]) => {
-                                                                if (datos.length === 0) return null;
-                                                                const totalIngresos = datos.reduce((sum, d) => sum + d.ingresos, 0);
-                                                                const promedio = totalIngresos / datos.length;
-                                                                const ultimo = datos[datos.length - 1];
-                                                                
-                                                                return (
-                                                                    <div key={trimestre} className="bg-white rounded-lg p-3 shadow-sm">
-                                                                        <p className="text-xs font-semibold text-gray-600 mb-1">{trimestre}</p>
-                                                                        <p className="text-lg font-bold text-green-600">${formatearNumero(ultimo.ingresos)}</p>
-                                                                        <p className="text-xs text-gray-600">Último: {ultimo.año}</p>
-                                                                        <p className="text-xs text-gray-500 mt-1">Promedio: ${formatearNumero(Math.round(promedio))}</p>
-                                                                    </div>
-                                                                );
-                                                            })}
                                                         </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()}
-                                    </div>
-                                    
-                                    {/* Comparación por Mes entre Años */}
-                                    <div className="mb-8">
-                                        <h3 className="text-xl font-bold mb-4">📆 Comparación Mes a Mes</h3>
-                                        {(() => {
-                                            const mesesPorAño = {};
-                                            registros.forEach(r => {
-                                                if (!r.fecha) return;
-                                                const [año, mes] = r.fecha.split('-');
-                                                if (!mesesPorAño[mes]) mesesPorAño[mes] = {};
-                                                if (!mesesPorAño[mes][año]) mesesPorAño[mes][año] = 0;
-                                                mesesPorAño[mes][año] += r.importe;
-                                            });
-                                            
-                                            const meses = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
-                                            const nombresMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                                                                 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-                                            const años = [...new Set(registros.map(r => r.fecha?.substring(0, 4)).filter(Boolean))].sort();
-                                            
-                                            if (años.length === 0) {
-                                                return <p className="text-gray-500">No hay datos para comparar</p>;
-                                            }
-                                            
-                                            return (
-                                                <div className="overflow-x-auto">
-                                                    <table className="w-full border-collapse">
-                                                        <thead>
-                                                            <tr className="bg-gray-100">
-                                                                <th className="p-3 text-left font-semibold">Mes</th>
-                                                                {años.map(año => (
-                                                                    <th key={año} className="p-3 text-right font-semibold">{año}</th>
-                                                                ))}
-                                                                {años.length > 1 && (
-                                                                    <th className="p-3 text-right font-semibold">Variación</th>
-                                                                )}
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {meses.map((mes, idx) => {
-                                                                const valores = años.map(año => mesesPorAño[mes]?.[año] || 0);
-                                                                const variacion = valores.length > 1 && valores[valores.length - 2] > 0
-                                                                    ? ((valores[valores.length - 1] - valores[valores.length - 2]) / valores[valores.length - 2] * 100)
-                                                                    : null;
-                                                                
-                                                                return (
-                                                                    <tr key={mes} className="border-t hover:bg-gray-50">
-                                                                        <td className="p-3 font-medium">{nombresMeses[idx]}</td>
-                                                                        {valores.map((valor, i) => (
-                                                                            <td key={i} className="p-3 text-right">
-                                                                                {valor > 0 ? `$${formatearNumero(valor)}` : '-'}
-                                                                            </td>
-                                                                        ))}
-                                                                        {años.length > 1 && (
-                                                                            <td className="p-3 text-right">
-                                                                                {variacion !== null ? (
-                                                                                    <span className={variacion >= 0 ? 'text-green-600' : 'text-red-600'}>
-                                                                                        {variacion >= 0 ? '↗' : '↘'} {variacion >= 0 ? '+' : ''}{variacion.toFixed(0)}%
-                                                                                    </span>
-                                                                                ) : '-'}
-                                                                            </td>
-                                                                        )}
-                                                                    </tr>
-                                                                );
-                                                            })}
-                                                        </tbody>
-                                                        <tfoot>
-                                                            <tr className="bg-gray-100 font-bold">
-                                                                <td className="p-3">TOTAL</td>
-                                                                {años.map(año => {
-                                                                    const total = registros
-                                                                        .filter(r => r.fecha?.startsWith(año))
-                                                                        .reduce((sum, r) => sum + r.importe, 0);
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+
+                                {/* Trimestral */}
+                                <div className="bg-white p-6 rounded-xl shadow">
+                                    <h3 className="text-xl font-bold mb-4">📊 Comparación Trimestral Anualizada</h3>
+                                    {(() => {
+                                        const qNom = {Q1:'1° Trim (Ene-Mar)',Q2:'2° Trim (Abr-Jun)',Q3:'3° Trim (Jul-Sep)',Q4:'4° Trim (Oct-Dic)'};
+                                        const qCol = {Q1:'from-blue-500 to-blue-600',Q2:'from-green-500 to-green-600',Q3:'from-orange-500 to-orange-600',Q4:'from-purple-500 to-purple-600'};
+                                        const porQ = {Q1:[],Q2:[],Q3:[],Q4:[]};
+                                        Object.values(datosComparativo.trimestres)
+                                            .sort((a,b)=>a.año!==b.año?a.año.localeCompare(b.año):({Q1:1,Q2:2,Q3:3,Q4:4}[a.trimestre]-{Q1:1,Q2:2,Q3:3,Q4:4}[b.trimestre]))
+                                            .forEach(t=>porQ[t.trimestre].push(t));
+                                        
+                                        const hayDatos = Object.values(porQ).some(arr=>arr.length>0);
+                                        if (!hayDatos) return <p className="text-gray-500">Sin datos</p>;
+                                        
+                                        return (
+                                            <div className="space-y-4">
+                                                {Object.entries(porQ).map(([q,datos]) => {
+                                                    if (!datos.length) return null;
+                                                    const mx = Math.max(...datos.map(d=>d.ingresos));
+                                                    return (
+                                                        <div key={q} className="border rounded-lg p-4 bg-gray-50">
+                                                            <h4 className="font-bold mb-3">{qNom[q]}</h4>
+                                                            <div className="space-y-2">
+                                                                {datos.map((d,i) => {
+                                                                    const ant = i>0?datos[i-1]:null;
+                                                                    const crec = ant?((d.ingresos-ant.ingresos)/ant.ingresos*100):0;
                                                                     return (
-                                                                        <td key={año} className="p-3 text-right text-green-600">
-                                                                            ${formatearNumero(total)}
-                                                                        </td>
+                                                                        <div key={`${q}-${d.año}`} className="bg-white rounded p-3 shadow-sm">
+                                                                            <div className="flex justify-between items-center mb-1">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span className="font-bold">{d.año}</span>
+                                                                                    {ant && <span className={`text-xs px-2 py-0.5 rounded-full ${crec>=0?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>{crec>=0?'↗ +':'↘ '}{crec.toFixed(1)}%</span>}
+                                                                                </div>
+                                                                                <span className="font-bold text-green-600">${formatearNumero(d.ingresos)}</span>
+                                                                            </div>
+                                                                            <div className="w-full bg-gray-200 rounded-full h-2">
+                                                                                <div className={`bg-gradient-to-r ${qCol[q]} h-2 rounded-full`} style={{width:`${(d.ingresos/mx)*100}%`}}></div>
+                                                                            </div>
+                                                                        </div>
                                                                     );
                                                                 })}
-                                                                {años.length > 1 && <td></td>}
-                                                            </tr>
-                                                        </tfoot>
-                                                    </table>
-                                                </div>
-                                            );
-                                        })()}
-                                    </div>
-                                    
-                                    {/* Top Clientas Comparativo */}
-                                    <div>
-                                        <h3 className="text-xl font-bold mb-4">👑 Top Clientas por Año</h3>
-                                        {(() => {
-                                            const años = [...new Set(registros.map(r => r.fecha?.substring(0, 4)).filter(Boolean))].sort().reverse();
-                                            
-                                            if (años.length === 0) {
-                                                return <p className="text-gray-500">No hay datos</p>;
-                                            }
-                                            
-                                            return (
-                                                <div className="grid md:grid-cols-2 gap-6">
-                                                    {años.map(año => {
-                                                        const clientasAño = {};
-                                                        registros
-                                                            .filter(r => r.fecha?.startsWith(año))
-                                                            .forEach(r => {
-                                                                if (!r.clienta) return;
-                                                                if (!clientasAño[r.clienta]) clientasAño[r.clienta] = 0;
-                                                                clientasAño[r.clienta] += r.importe;
-                                                            });
-                                                        
-                                                        const top5 = Object.entries(clientasAño)
-                                                            .sort((a, b) => b[1] - a[1])
-                                                            .slice(0, 5);
-                                                        
-                                                        const max = top5[0]?.[1] || 1;
-                                                        
-                                                        return (
-                                                            <div key={año} className="bg-gray-50 p-4 rounded-lg">
-                                                                <h4 className="font-bold text-lg mb-3">{año}</h4>
-                                                                {top5.length > 0 ? (
-                                                                    <div className="space-y-3">
-                                                                        {top5.map(([clienta, total], idx) => (
-                                                                            <div key={clienta}>
-                                                                                <div className="flex justify-between text-sm mb-1">
-                                                                                    <span className="font-medium">
-                                                                                        {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}.`} {clienta}
-                                                                                    </span>
-                                                                                    <span className="text-green-600 font-bold">${formatearNumero(total)}</span>
-                                                                                </div>
-                                                                                <div className="w-full bg-gray-300 rounded-full h-2">
-                                                                                    <div className="bg-blue-600 h-2 rounded-full" 
-                                                                                        style={{width: `${(total / max) * 100}%`}}></div>
-                                                                                </div>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                ) : (
-                                                                    <p className="text-gray-500 text-sm">Sin datos</p>
-                                                                )}
                                                             </div>
-                                                        );
-                                                    })}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+
+                                {/* Mes a mes */}
+                                <div className="bg-white p-6 rounded-xl shadow">
+                                    <h3 className="text-xl font-bold mb-4">📆 Comparación Mes a Mes</h3>
+                                    {(() => {
+                                        const años = Object.keys(datosComparativo.años).sort();
+                                        if (!años.length) return <p className="text-gray-500">Sin datos</p>;
+                                        const meses = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+                                        const nomM = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+                                        return (
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full border-collapse text-sm">
+                                                    <thead>
+                                                        <tr className="bg-gray-100">
+                                                            <th className="p-3 text-left">Mes</th>
+                                                            {años.map(a=><th key={a} className="p-3 text-right">{a}</th>)}
+                                                            {años.length>1&&<th className="p-3 text-right">Var.</th>}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {meses.map((mes,idx)=>{
+                                                            const vals = años.map(a=>datosComparativo.mesesPorAño[mes]?.[a]||0);
+                                                            const variac = años.length>1&&vals[vals.length-2]>0?((vals[vals.length-1]-vals[vals.length-2])/vals[vals.length-2]*100):null;
+                                                            return (
+                                                                <tr key={mes} className="border-t hover:bg-gray-50">
+                                                                    <td className="p-3 font-medium">{nomM[idx]}</td>
+                                                                    {vals.map((v,i)=><td key={i} className="p-3 text-right">{v>0?`$${formatearNumero(v)}`:'-'}</td>)}
+                                                                    {años.length>1&&<td className="p-3 text-right">{variac!==null?<span className={variac>=0?'text-green-600':'text-red-600'}>{variac>=0?'↗ +':'↘ '}{variac.toFixed(0)}%</span>:'-'}</td>}
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                    <tfoot>
+                                                        <tr className="bg-gray-100 font-bold">
+                                                            <td className="p-3">TOTAL</td>
+                                                            {años.map(a=><td key={a} className="p-3 text-right text-green-600">${formatearNumero(datosComparativo.años[a]?.ingresos||0)}</td>)}
+                                                            {años.length>1&&<td></td>}
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+
+                                {/* Top clientas */}
+                                <div className="bg-white p-6 rounded-xl shadow">
+                                    <h3 className="text-xl font-bold mb-4">👑 Top Clientas por Año</h3>
+                                    <div className="grid md:grid-cols-2 gap-6">
+                                        {Object.keys(datosComparativo.años).sort().reverse().map(año=>{
+                                            const top5 = Object.entries(datosComparativo.clientasPorAño[año]||{}).sort((a,b)=>b[1]-a[1]).slice(0,5);
+                                            const mx = top5[0]?.[1]||1;
+                                            return (
+                                                <div key={año} className="bg-gray-50 p-4 rounded-lg">
+                                                    <h4 className="font-bold text-lg mb-3">{año}</h4>
+                                                    {top5.length>0 ? (
+                                                        <div className="space-y-3">
+                                                            {top5.map(([cl,total],i)=>(
+                                                                <div key={cl}>
+                                                                    <div className="flex justify-between text-sm mb-1">
+                                                                        <span>{i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`} {cl}</span>
+                                                                        <span className="text-green-600 font-bold">${formatearNumero(total)}</span>
+                                                                    </div>
+                                                                    <div className="w-full bg-gray-300 rounded-full h-2">
+                                                                        <div className="bg-blue-600 h-2 rounded-full" style={{width:`${(total/mx)*100}%`}}></div>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : <p className="text-gray-500 text-sm">Sin datos</p>}
                                                 </div>
                                             );
-                                        })()}
+                                        })}
                                     </div>
                                 </div>
                             </>
                         )}
+
                     </div>
                 </div>
             );
@@ -2588,6 +2141,8 @@ Te enviaré un recordatorio el día anterior.
                     horarios={horarios}
                     setView={setView}
                     guardarReservas={guardarReservas}
+                    servicios={servicios}
+                    señaFija={señaFija}
                 />;
             }
 
@@ -2840,16 +2395,12 @@ Te enviaré un recordatorio el día anterior.
             });
             
             const cambiarPaso = (nuevoPaso) => {
-                setCargando(true);
-                // Resetear estados del paso 3
                 if (nuevoPaso !== 3) {
                     setHoraPreferida('');
                     setMostrarCalendario(false);
                 }
-                setTimeout(() => {
-                    setPaso(nuevoPaso);
-                    setCargando(false);
-                }, 100);
+                setPaso(nuevoPaso);
+                window.scrollTo(0, 0);
             };
 
             const toggleServicio = (s) => {
@@ -2982,300 +2533,98 @@ Te enviaré un recordatorio el día anterior.
                                 <h2 className="text-3xl font-bold mb-2">Elegí fecha y hora</h2>
                                 <p className="text-gray-600 mb-8">Encontrá el mejor horario para vos</p>
                                 
-                                <div className="bg-white p-8 rounded-2xl shadow-lg max-w-4xl mx-auto">
-                                    {(() => {
-                                        // Generar próximos 28 días
-                                        const diasDisponibles = [];
-                                        for (let i = 0; i < 28; i++) {
-                                            const fecha = new Date();
-                                            fecha.setDate(fecha.getDate() + i);
-                                            const fechaStr = fecha.toISOString().split('T')[0];
-                                            const config = horarios[sel.sucursal.id][fechaStr];
-                                            if (config && config.horas && config.horas.length > 0) {
-                                                diasDisponibles.push({
-                                                    fecha: fecha,
-                                                    fechaStr: fechaStr,
-                                                    horas: config.horas
-                                                });
-                                            }
-                                        }
-                                        
-                                        // Filtrar por hora preferida
-                                        const diasConHoraPreferida = horaPreferida 
-                                            ? diasDisponibles.filter(d => d.horas.includes(horaPreferida))
-                                            : diasDisponibles;
-                                        
-                                        // Encontrar hora más cercana si no hay exacta
-                                        const horaMasCercana = horaPreferida && diasConHoraPreferida.length === 0 ? (() => {
-                                            const [h, m] = horaPreferida.split(':').map(Number);
-                                            const minutosBuscado = h * 60 + m;
-                                            let mejorDiferencia = Infinity;
-                                            let mejorDia = null;
-                                            let mejorHora = null;
-                                            
-                                            diasDisponibles.forEach(dia => {
-                                                dia.horas.forEach(hora => {
-                                                    const [hh, mm] = hora.split(':').map(Number);
-                                                    const minutosHora = hh * 60 + mm;
-                                                    const diff = Math.abs(minutosHora - minutosBuscado);
-                                                    if (diff < mejorDiferencia) {
-                                                        mejorDiferencia = diff;
-                                                        mejorDia = dia;
-                                                        mejorHora = hora;
+                                <div className="bg-white p-6 rounded-2xl shadow-lg max-w-4xl mx-auto space-y-6">
+                                    
+                                    {/* SELECCIÓN DE FECHA */}
+                                    {!sel.fecha && (
+                                        <div>
+                                            <h3 className="font-semibold text-lg mb-4">📅 Días disponibles:</h3>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                {(() => {
+                                                    const dias = [];
+                                                    for (let i = 0; i < 28; i++) {
+                                                        const d = new Date();
+                                                        d.setDate(d.getDate() + i);
+                                                        const y = d.getFullYear();
+                                                        const m = String(d.getMonth()+1).padStart(2,'0');
+                                                        const day = String(d.getDate()).padStart(2,'0');
+                                                        const fechaStr = `${y}-${m}-${day}`;
+                                                        const config = horarios[sel.sucursal.id]?.[fechaStr];
+                                                        if (config && config.horas && config.horas.length > 0) {
+                                                            dias.push({ fechaStr, label: d.toLocaleDateString('es-AR', {weekday:'short', day:'numeric', month:'short'}) });
+                                                        }
                                                     }
-                                                });
-                                            });
-                                            return { dia: mejorDia, hora: mejorHora };
-                                        })() : null;
-                                        
-                                        return (
-                                            <>
-                                                {/* Paso 1: Pregunta hora preferida */}
-                                                {!mostrarCalendario && (
-                                                    <div className="space-y-6">
-                                                        <div className="bg-blue-50 rounded-xl p-6 mb-6">
-                                                            <h3 className="font-semibold text-lg mb-2">¿Tenés alguna preferencia de horario?</h3>
-                                                            <p className="text-sm text-gray-600 mb-4">Te mostramos los días que tienen ese horario disponible</p>
-                                                            
-                                                            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mb-4">
-                                                                {['07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'].map(h => {
-                                                                    const cantidadDias = diasDisponibles.filter(d => d.horas.includes(h) || d.horas.includes(h + ':30')).length;
-                                                                    return (
-                                                                        <button key={h}
-                                                                            onClick={() => setHoraPreferida(h)}
-                                                                            disabled={cantidadDias === 0}
-                                                                            className={`p-3 rounded-lg text-sm transition-all ${
-                                                                                horaPreferida === h
-                                                                                    ? 'bg-blue-600 text-white font-bold'
-                                                                                    : cantidadDias > 0
-                                                                                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                                                                                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                                                            }`}>
-                                                                            {h}
-                                                                            {cantidadDias > 0 && <div className="text-xs mt-1">({cantidadDias} días)</div>}
-                                                                        </button>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                            
-                                                            <button 
-                                                                onClick={() => setMostrarCalendario(true)}
-                                                                className="text-sm text-blue-600 hover:underline">
-                                                                O ver todos los días disponibles →
-                                                            </button>
-                                                        </div>
-                                                        
-                                                        {/* Mostrar sugerencia si no hay hora exacta */}
-                                                        {horaPreferida && diasConHoraPreferida.length === 0 && horaMasCercana && (
-                                                            <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
-                                                                <p className="text-yellow-800 font-semibold mb-2">
-                                                                    ⚠️ No hay turnos disponibles a las {horaPreferida}
-                                                                </p>
-                                                                <p className="text-yellow-700 text-sm mb-3">
-                                                                    El horario más cercano disponible es a las <strong>{horaMasCercana.hora}</strong>
-                                                                </p>
-                                                                <button 
-                                                                    onClick={() => {
-                                                                        setHoraPreferida('');
-                                                                        setSel({...sel, fecha: horaMasCercana.dia.fecha.toISOString(), hora: horaMasCercana.hora});
-                                                                    }}
-                                                                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700">
-                                                                    Ver este horario
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                        
-                                                        {/* Mostrar días con hora preferida */}
-                                                        {horaPreferida && diasConHoraPreferida.length > 0 && (
-                                                            <div>
-                                                                <h4 className="font-semibold mb-4">Días disponibles cerca de las {horaPreferida}:</h4>
-                                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                                                    {diasConHoraPreferida.slice(0, 9).map(dia => (
-                                                                        <button key={dia.fechaStr}
-                                                                            onClick={() => setSel({...sel, fecha: dia.fecha.toISOString(), hora: null})}
-                                                                            className="p-4 bg-green-50 hover:bg-green-100 border-2 border-green-300 rounded-xl text-left transition-all">
-                                                                            <div className="font-bold text-green-800">
-                                                                                {dia.fecha.toLocaleDateString('es-AR', {weekday: 'short', day: 'numeric', month: 'short'})}
-                                                                            </div>
-                                                                            <div className="text-xs text-green-600 mt-1">
-                                                                                {dia.horas.filter(h => h.startsWith(horaPreferida.split(':')[0])).length} horarios disponibles
-                                                                            </div>
-                                                                        </button>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                                
-                                                {/* Paso 2: Calendario completo */}
-                                                {mostrarCalendario && !sel.fecha && (
-                                                    <div>
-                                                        <button onClick={() => setMostrarCalendario(false)} className="mb-4 text-blue-600">← Filtrar por hora</button>
-                                                        <h3 className="font-semibold text-lg mb-4">Días con turnos disponibles:</h3>
-                                                        <div className="grid grid-cols-7 gap-2 mb-6">
-                                                            {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(d => (
-                                                                <div key={d} className="text-center text-xs font-semibold text-gray-600 py-2">{d}</div>
-                                                            ))}
-                                                            
-                                                            {(() => {
-                                                                const dias = [];
-                                                                const hoy = new Date();
-                                                                for (let i = 0; i < 28; i++) {
-                                                                    const fecha = new Date();
-                                                                    fecha.setDate(fecha.getDate() + i);
-                                                                    dias.push(fecha);
-                                                                }
-                                                                
-                                                                return dias.map((fecha, idx) => {
-                                                                    const fechaStr = fecha.toISOString().split('T')[0];
-                                                                    const config = horarios[sel.sucursal.id][fechaStr];
-                                                                    const tieneHorarios = config && config.horas && config.horas.length > 0;
-                                                                    const diaSemana = fecha.getDay();
-                                                                    const esHoy = fecha.toDateString() === hoy.toDateString();
-                                                                    
-                                                                    if (idx === 0) {
-                                                                        const padding = [];
-                                                                        for (let p = 0; p < diaSemana; p++) {
-                                                                            padding.push(<div key={`pad-${p}`} />);
-                                                                        }
-                                                                        return [
-                                                                            ...padding,
-                                                                            <button key={fechaStr}
-                                                                                onClick={() => tieneHorarios ? setSel({...sel, fecha: fecha.toISOString(), hora: null}) : null}
-                                                                                disabled={!tieneHorarios}
-                                                                                className={`p-3 rounded-lg text-sm transition-all ${
-                                                                                    tieneHorarios
-                                                                                        ? 'bg-green-100 text-green-800 hover:bg-green-200 cursor-pointer'
-                                                                                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                                                                } ${esHoy ? 'ring-2 ring-blue-400' : ''}`}>
-                                                                                <div className="font-semibold">{fecha.getDate()}</div>
-                                                                                {tieneHorarios && <div className="text-xs mt-1">✓</div>}
-                                                                            </button>
-                                                                        ];
-                                                                    }
-                                                                    
-                                                                    return (
-                                                                        <button key={fechaStr}
-                                                                            onClick={() => tieneHorarios ? setSel({...sel, fecha: fecha.toISOString(), hora: null}) : null}
-                                                                            disabled={!tieneHorarios}
-                                                                            className={`p-3 rounded-lg text-sm transition-all ${
-                                                                                tieneHorarios
-                                                                                    ? 'bg-green-100 text-green-800 hover:bg-green-200 cursor-pointer'
-                                                                                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                                                            } ${esHoy ? 'ring-2 ring-blue-400' : ''}`}>
-                                                                            <div className="font-semibold">{fecha.getDate()}</div>
-                                                                            {tieneHorarios && <div className="text-xs mt-1">✓</div>}
-                                                                        </button>
-                                                                    );
-                                                                });
-                                                            })()}
-                                                        </div>
-                                                        <div className="flex gap-4 text-xs">
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="w-4 h-4 bg-green-100 rounded"></div>
-                                                                <span>Disponible</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="w-4 h-4 bg-gray-100 rounded"></div>
-                                                                <span>Sin turnos</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                
-                                                {/* Paso 3: Selección de hora */}
-                                                {sel.fecha && (() => {
-                                                    const fecha = new Date(sel.fecha);
-                                                    const fechaStr = fecha.toISOString().split('T')[0];
-                                                    const horario = horarios[sel.sucursal.id][fechaStr];
-                                                    const horasConfiguradas = horario?.horas || [];
-                                                    
-                                                    // Calcular duración total de servicios seleccionados
-                                                    const duracionTotal = sel.servicios.reduce((sum, s) => sum + s.duracion, 0);
-                                                    
-                                                    // Filtrar horas que están bloqueadas por otras reservas
-                                                    const horasDisponibles = horasConfiguradas.filter(hora => {
-                                                        // Verificar si esta hora y las siguientes (según duración) están disponibles
-                                                        const turnosNecesarios = calcularTurnosBloqueados(sel.fecha, hora, duracionTotal);
-                                                        
-                                                        // Verificar si alguno de los turnos necesarios está bloqueado por otra reserva
-                                                        const estaDisponible = !reservas.some(r => {
-                                                            // Solo considerar reservas del mismo día, sucursal y que no estén canceladas
-                                                            if (r.estado === 'cancelada') return false;
-                                                            if (r.sucursal.id !== sel.sucursal.id) return false;
-                                                            
-                                                            // Comparar fechas directamente (ambas están en formato YYYY-MM-DD)
-                                                            if (r.fecha !== fechaStr) return false;
-                                                            
-                                                            // Verificar si hay solapamiento con los turnos bloqueados de esta reserva
-                                                            return r.turnosBloqueados?.some(tb => turnosNecesarios.includes(tb));
-                                                        });
-                                                        
-                                                        return estaDisponible;
-                                                    });
-                                                    
-                                                    if (horasDisponibles.length === 0) {
-                                                        return (
-                                                            <div>
-                                                                <button onClick={() => setSel({...sel, fecha: null, hora: null})} className="mb-4 text-blue-600">← Cambiar fecha</button>
-                                                                <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
-                                                                    <p className="text-yellow-800 font-semibold mb-2">
-                                                                        ⚠️ No hay turnos disponibles este día
-                                                                    </p>
-                                                                    <p className="text-yellow-700 text-sm">
-                                                                        La duración de tus servicios es de <strong>{duracionTotal} minutos</strong> y todos los horarios están ocupados.
-                                                                    </p>
-                                                                    <p className="text-yellow-700 text-sm mt-2">
-                                                                        Por favor elegí otra fecha.
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    }
-                                                    
-                                                    return (
-                                                        <div>
-                                                            <button onClick={() => setSel({...sel, fecha: null, hora: null})} className="mb-4 text-blue-600">← Cambiar fecha</button>
-                                                            <div className="bg-blue-50 rounded-xl p-4 mb-4">
-                                                                <p className="font-semibold">
-                                                                    📅 {fecha.toLocaleDateString('es-AR', {weekday: 'long', day: 'numeric', month: 'long'})}
-                                                                </p>
-                                                                <p className="text-sm text-gray-600 mt-1">
-                                                                    ⏱️ Duración total: {duracionTotal} minutos
-                                                                </p>
-                                                            </div>
-                                                            <label className="block text-sm font-semibold mb-3">⏰ Elegí tu horario:</label>
-                                                            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-96 overflow-y-auto p-2">
-                                                                {horasDisponibles.map(hora => (
-                                                                    <button key={hora}
-                                                                        onClick={() => setSel({...sel, hora: hora})}
-                                                                        className={`p-3 rounded-lg font-semibold transition-all ${
-                                                                            sel.hora === hora
-                                                                                ? 'bg-blue-600 text-white shadow-lg scale-105'
-                                                                                : 'bg-gray-100 hover:bg-blue-100 hover:text-blue-600'
-                                                                        }`}>
-                                                                        {hora}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    );
+                                                    if (dias.length === 0) return <p className="text-gray-500 col-span-3">No hay turnos disponibles en los próximos 28 días.</p>;
+                                                    return dias.map(dia => (
+                                                        <button key={dia.fechaStr}
+                                                            onClick={() => setSel({...sel, fecha: dia.fechaStr, hora: null})}
+                                                            className="p-4 bg-green-50 hover:bg-green-100 border-2 border-green-300 rounded-xl text-left transition-all">
+                                                            <div className="font-bold text-green-800">{dia.label}</div>
+                                                        </button>
+                                                    ));
                                                 })()}
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {/* SELECCIÓN DE HORA */}
+                                    {sel.fecha && (
+                                        <div>
+                                            <button onClick={() => setSel({...sel, fecha: null, hora: null})} className="mb-4 text-blue-600 text-sm">← Cambiar fecha</button>
+                                            <div className="bg-blue-50 rounded-xl p-4 mb-4">
+                                                <p className="font-semibold">📅 {(() => { const [y,m,d] = sel.fecha.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'}); })()}</p>
+                                                <p className="text-sm text-gray-600 mt-1">⏱️ Duración: {sel.servicios.reduce((s,sv)=>s+sv.duracion,0)} min</p>
+                                            </div>
+                                            
+                                            {(() => {
+                                                const horario = horarios[sel.sucursal.id]?.[sel.fecha];
+                                                const horasConf = horario?.horas || [];
+                                                const duracion = sel.servicios.reduce((s,sv)=>s+sv.duracion,0);
                                                 
-                                                {sel.fecha && sel.hora && (
-                                                    <button onClick={() => cambiarPaso(4)}
-                                                        className="w-full mt-6 bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 rounded-xl font-bold text-lg">
-                                                        Continuar →
-                                                    </button>
-                                                )}
-                                            </>
-                                        );
-                                    })()}
+                                                const horasDisp = horasConf.filter(hora => {
+                                                    const bloqueados = calcularTurnosBloqueados(sel.fecha, hora, duracion);
+                                                    return !reservas.some(r => {
+                                                        if (r.estado === 'cancelada') return false;
+                                                        if (r.sucursal.id !== sel.sucursal.id) return false;
+                                                        if (r.fecha !== sel.fecha) return false;
+                                                        return r.turnosBloqueados?.some(tb => bloqueados.includes(tb));
+                                                    });
+                                                });
+                                                
+                                                if (horasDisp.length === 0) return (
+                                                    <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
+                                                        <p className="text-yellow-800 font-semibold">⚠️ Sin turnos disponibles este día</p>
+                                                        <p className="text-yellow-700 text-sm mt-1">Por favor elegí otra fecha.</p>
+                                                    </div>
+                                                );
+                                                
+                                                return (
+                                                    <div>
+                                                        <label className="block text-sm font-semibold mb-3">⏰ Elegí tu horario:</label>
+                                                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                                                            {horasDisp.map(hora => (
+                                                                <button key={hora}
+                                                                    onClick={() => setSel({...sel, hora})}
+                                                                    className={`p-3 rounded-lg font-semibold transition-all ${sel.hora === hora ? 'bg-blue-600 text-white shadow-lg' : 'bg-gray-100 hover:bg-blue-100 hover:text-blue-600'}`}>
+                                                                    {hora}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+                                            
+                                            {sel.fecha && sel.hora && (
+                                                <button onClick={() => cambiarPaso(4)}
+                                                    className="w-full mt-6 bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 rounded-xl font-bold text-lg">
+                                                    Continuar →
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
-
                         {paso === 4 && (
                             <div className="py-8">
                                 <button onClick={() => cambiarPaso(3)} className="mb-6 text-blue-600">← Volver</button>
