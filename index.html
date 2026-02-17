@@ -144,7 +144,7 @@
                 document.getElementById('loading').classList.add('hidden');
             }, 500);
         });
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
         // Configuración por defecto
         const SUCURSALES = [
@@ -898,37 +898,39 @@ Ingresá el número (1-6):`;
                 return true;
             });
             
-            // Estadísticas
-            const stats = {
-                totalIngresos: registrosFiltrados.reduce((sum, r) => sum + r.importe, 0),
+            // Estadísticas optimizadas con useMemo
+            const stats = useMemo(() => ({
+                totalIngresos: registrosFiltrados.reduce((sum, r) => sum + (r.importe || 0), 0),
                 cantidadServicios: registrosFiltrados.length,
                 ticketPromedio: registrosFiltrados.length > 0 
-                    ? registrosFiltrados.reduce((sum, r) => sum + r.importe, 0) / registrosFiltrados.length 
+                    ? registrosFiltrados.reduce((sum, r) => sum + (r.importe || 0), 0) / registrosFiltrados.length 
                     : 0,
-                clientasUnicas: [...new Set(registrosFiltrados.map(r => r.clienta))].length
-            };
+                clientasUnicas: [...new Set(registrosFiltrados.map(r => r.clienta).filter(c => c))].length
+            }), [registrosFiltrados]);
             
-            // Servicios más vendidos
-            const serviciosMasVendidos = () => {
+            // Servicios más vendidos optimizado
+            const serviciosMasVendidos = useMemo(() => {
                 const conteo = {};
                 registrosFiltrados.forEach(r => {
-                    r.servicios.forEach(s => {
-                        conteo[s] = (conteo[s] || 0) + 1;
-                    });
+                    if (r.servicios && Array.isArray(r.servicios)) {
+                        r.servicios.forEach(s => {
+                            if (s) conteo[s] = (conteo[s] || 0) + 1;
+                        });
+                    }
                 });
                 return Object.entries(conteo).sort((a, b) => b[1] - a[1]).slice(0, 5);
-            };
+            }, [registrosFiltrados]);
             
-            // Ingresos por mes
-            const ingresosPorMes = () => {
+            // Ingresos por mes optimizado
+            const ingresosPorMes = useMemo(() => {
                 const meses = {};
                 registrosFiltrados.forEach(r => {
                     if (!r.fecha || typeof r.fecha !== 'string') return;
                     const mes = r.fecha.substring(0, 7);
-                    meses[mes] = (meses[mes] || 0) + r.importe;
+                    meses[mes] = (meses[mes] || 0) + (r.importe || 0);
                 });
                 return Object.entries(meses).sort((a, b) => a[0].localeCompare(b[0]));
-            };
+            }, [registrosFiltrados]);
             
             // Exportar a Excel
             const exportarExcel = () => {
@@ -1089,11 +1091,122 @@ Ingresá el número (1-6):`;
                     
                     <div className="max-w-7xl mx-auto p-4 space-y-6">
                         {vistaActual === 'dashboard' && (
-                            <div className="bg-white p-6 rounded-xl shadow">
-                                <h2 className="text-2xl font-bold mb-4">Dashboard</h2>
-                                <p>Registros cargados: {registros.length}</p>
-                                <p>Si ves este mensaje, el componente funciona correctamente.</p>
-                            </div>
+                            <>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <p className="text-gray-500 text-sm">Ingresos Totales</p>
+                                        <p className="text-3xl font-bold text-green-600">${formatearNumero(stats.totalIngresos)}</p>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <p className="text-gray-500 text-sm">Servicios</p>
+                                        <p className="text-3xl font-bold text-blue-600">{stats.cantidadServicios}</p>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <p className="text-gray-500 text-sm">Ticket Promedio</p>
+                                        <p className="text-3xl font-bold text-purple-600">${formatearNumero(Math.round(stats.ticketPromedio))}</p>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <p className="text-gray-500 text-sm">Clientas</p>
+                                        <p className="text-3xl font-bold text-pink-600">{stats.clientasUnicas}</p>
+                                    </div>
+                                </div>
+                                
+                                <div className="bg-white p-6 rounded-xl shadow">
+                                    <h3 className="font-bold mb-4">🔍 Filtros</h3>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-sm mb-1">Desde</label>
+                                            <input type="date" value={filtros.fechaInicio} 
+                                                onChange={(e) => setFiltros({...filtros, fechaInicio: e.target.value})}
+                                                className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm mb-1">Hasta</label>
+                                            <input type="date" value={filtros.fechaFin} 
+                                                onChange={(e) => setFiltros({...filtros, fechaFin: e.target.value})}
+                                                className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm mb-1">Clienta</label>
+                                            <input type="text" placeholder="Buscar..." value={filtros.clienta}
+                                                onChange={(e) => setFiltros({...filtros, clienta: e.target.value})}
+                                                className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm mb-1">Servicio</label>
+                                            <input type="text" placeholder="Buscar..." value={filtros.servicio}
+                                                onChange={(e) => setFiltros({...filtros, servicio: e.target.value})}
+                                                className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm mb-1">Método Pago</label>
+                                            <select value={filtros.metodoPago}
+                                                onChange={(e) => setFiltros({...filtros, metodoPago: e.target.value})}
+                                                className="w-full p-2 border rounded">
+                                                <option value="">Todos</option>
+                                                <option value="efectivo">Efectivo</option>
+                                                <option value="transferencia">Transferencia</option>
+                                                <option value="mercadopago">MercadoPago</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm mb-1">Sucursal</label>
+                                            <select value={filtros.sucursal}
+                                                onChange={(e) => setFiltros({...filtros, sucursal: e.target.value})}
+                                                className="w-full p-2 border rounded">
+                                                <option value="">Todas</option>
+                                                <option value="Bahía Blanca">Bahía Blanca</option>
+                                                <option value="Punta Alta">Punta Alta</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    {(filtros.fechaInicio || filtros.fechaFin || filtros.clienta || filtros.servicio || filtros.metodoPago || filtros.sucursal) && (
+                                        <button onClick={() => setFiltros({fechaInicio: '', fechaFin: '', clienta: '', servicio: '', metodoPago: '', sucursal: ''})}
+                                            className="mt-4 text-sm text-blue-600 hover:underline">
+                                            Limpiar filtros
+                                        </button>
+                                    )}
+                                </div>
+                                
+                                <div className="grid md:grid-cols-2 gap-6">
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <h3 className="font-bold mb-4">🏆 Servicios Más Vendidos</h3>
+                                        {serviciosMasVendidos.length > 0 ? serviciosMasVendidos.map(([servicio, cantidad]) => (
+                                            <div key={servicio} className="mb-3">
+                                                <div className="flex justify-between mb-1">
+                                                    <span className="text-sm font-medium">{servicio}</span>
+                                                    <span className="text-sm text-gray-600">{cantidad}</span>
+                                                </div>
+                                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                                    <div className="bg-blue-600 h-2 rounded-full" 
+                                                        style={{width: `${(cantidad / registrosFiltrados.length) * 100}%`}}></div>
+                                                </div>
+                                            </div>
+                                        )) : <p className="text-gray-500 text-sm">No hay datos para mostrar</p>}
+                                    </div>
+                                    
+                                    <div className="bg-white p-6 rounded-xl shadow">
+                                        <h3 className="font-bold mb-4">📈 Ingresos por Mes</h3>
+                                        {ingresosPorMes.length > 0 ? (() => {
+                                            const ultimos6 = ingresosPorMes.slice(-6);
+                                            const maxTotal = Math.max(...ingresosPorMes.map(m => m[1]));
+                                            
+                                            return ultimos6.map(([mes, total]) => (
+                                                <div key={mes} className="mb-3">
+                                                    <div className="flex justify-between mb-1">
+                                                        <span className="text-sm font-medium">{mes}</span>
+                                                        <span className="text-sm text-green-600 font-bold">${formatearNumero(total)}</span>
+                                                    </div>
+                                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                                        <div className="bg-green-600 h-2 rounded-full" 
+                                                            style={{width: `${(total / maxTotal) * 100}%`}}></div>
+                                                    </div>
+                                                </div>
+                                            ));
+                                        })() : <p className="text-gray-500 text-sm">No hay datos para mostrar</p>}
+                                    </div>
+                                </div>
+                            </>
                         )}
                         
                         {vistaActual === 'registros' && (
