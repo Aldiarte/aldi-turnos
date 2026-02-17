@@ -1082,9 +1082,6 @@ Ingresá el número (1-6):`;
                                     className={`px-4 py-2 rounded-lg text-sm ${vistaActual === 'comparativo' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
                                     📊 Comparativo
                                 </button>
-                                <button onClick={diagnosticarFirebase} className="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg text-sm hover:bg-yellow-200">
-                                    🔍 Test Firebase
-                                </button>
                                 <button onClick={() => setView('admin')} className="px-4 py-2 bg-gray-100 rounded-lg text-sm">← Volver</button>
                             </div>
                         </div>
@@ -1230,6 +1227,10 @@ Ingresá el número (1-6):`;
                                             🗑️ Eliminación Masiva
                                         </button>
                                     )}
+                                    <button onClick={diagnosticarFirebase}
+                                        className="px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200">
+                                        🔍 Test Firebase
+                                    </button>
                                 </div>
                                 
                                 {mostrarFormulario && (
