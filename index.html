@@ -210,22 +210,16 @@ Tu pago fue verificado y tu turno está *100% confirmado* 💖
 
 📋 *RECORDÁ TUS DATOS:*
 📍 Sucursal: ${reserva.sucursal.nombre}
-📅 Fecha: ${new Date(reserva.fecha).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'})}
+📅 Fecha: ${(() => { const [y,m,d] = reserva.fecha.substring(0,10).split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'}); })()}
 ⏰ Hora: ${reserva.hora}
 
-• ${servs}
-
-💰 *Precio total del servicio: $${total}*
-💸 *Con 10% descuento efectivo: $${totalEfectivo}*
+- ${servs}
 
 ✅ Seña pagada: $${señaFija}
 💵 Resto a pagar en el local:
-   • Efectivo: $${restoEfectivo} (10% descuento aplicado)
-   • Otros medios: $${resto}
+   • Efectivo: 10% descuento.
 
-Te enviaré un recordatorio el día anterior.
-
-¡Te esperamos! 😊✨`;
+¡Te espero! 😊✨`;
 
             const whatsappConfirmarLink = `https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(mensajeConfirmacion).replace(/%20/g, '+')}`;
             const panelLink = `${baseUrl}`;
@@ -1908,20 +1902,20 @@ Te enviaré un recordatorio el día anterior.
                 const linkComprobante = `${baseUrl}?comp=${reserva.id}`;
                 
                 const mensajeWA = `¡Hola ${reserva.cliente.nombre}! 👋✨
-
 Tu turno en *Aldi, arte en uñas* está pre-reservado 🎀
 
 📋 *DATOS DE TU TURNO:*
 📍 Sucursal: ${reserva.sucursal.nombre}
-📅 Fecha: ${new Date(reserva.fecha).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'})}
+📅 Fecha: ${(() => { const [y,m,d] = reserva.fecha.substring(0,10).split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'}); })()}
 ⏰ Hora: ${reserva.hora}
 
 Servicios:
-• ${servs}
+- ${servs}
 
 💰 *Precio total: $${total}*
-💸 *Con 10% descuento efectivo: $${totalEfectivo}*
 💵 Seña a pagar: $${señaFija}
+💸 *El resto del servicio con 10% descuento si abonás en efectivo*
+✅ *El valor final puede variar un poco de acuerdo al trabajo*
 
 ───────────────────
 
@@ -1935,11 +1929,11 @@ ${linkComprobante}
 
 ───────────────────
 
-Una vez que revise tu pago, te confirmaré definitivamente tu turno 😊
+Una vez que revise, te confirmaré definitivamente tu turno 😊
 
 💡 *La seña se descuenta del total*
 
-¡Gracias por elegirnos! 💖`;
+¡Gracias por elegirme! 💖`;
 
                 const whatsappLink = `https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(mensajeWA).replace(/%20/g, '+')}`;
                 const panelLink = `${baseUrl}`;
@@ -1981,7 +1975,6 @@ Una vez que revise tu pago, te confirmaré definitivamente tu turno 😊
                 const linkComprobante = `${baseUrl}?comp=${reserva.id}`;
                 
                 const mensaje = `¡Hola ${reserva.cliente.nombre}! 👋✨
-
 Para *CONFIRMAR* tu turno necesitamos una seña de *$${señaFija}*
 
 💳 *Transferencia al alias:*
@@ -1993,17 +1986,13 @@ ${linkComprobante}
 
 📋 *Tu turno:*
 📍 ${reserva.sucursal.nombre}
-📅 ${new Date(reserva.fecha).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'})}
+📅 ${(() => { const [y,m,d] = reserva.fecha.substring(0,10).split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'}); })()}
 ⏰ ${reserva.hora}
 
 ${servs}
 
-💰 *Precios:*
-• Total del servicio: $${total}
-• Con 10% descuento efectivo: $${totalEfectivo}
-
 ✅ La seña se descuenta del total
-¡Te esperamos! 😊💖`;
+¡Te espero! 😊💖`;
                 
                 const msgCodificado = encodeURIComponent(mensaje).replace(/%20/g, '+');
                 window.open(`https://api.whatsapp.com/send?phone=${tel}&text=${msgCodificado}`, '_blank');
@@ -2017,9 +2006,9 @@ ${servs}
 
 ¡Hola ${reserva.cliente.nombre}!
 
-Te recordamos tu turno para *MAÑANA*:
+Te recuerdo tu turno para *MAÑANA*:
 
-📅 ${new Date(reserva.fecha).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'})}
+📅 ${(() => { const [y,m,d] = reserva.fecha.substring(0,10).split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'}); })()}
 ⏰ ${reserva.hora}
 📍 ${reserva.sucursal.nombre}
 
@@ -2047,22 +2036,16 @@ Tu pago fue verificado y tu turno está *100% confirmado* 💖
 
 📋 *RECORDÁ TUS DATOS:*
 📍 Sucursal: ${reserva.sucursal.nombre}
-📅 Fecha: ${new Date(reserva.fecha).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'})}
+📅 Fecha: ${(() => { const [y,m,d] = reserva.fecha.substring(0,10).split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'}); })()}
 ⏰ Hora: ${reserva.hora}
 
-${servs}
-
-💰 *Precio total del servicio: $${total}*
-💸 *Con 10% descuento efectivo: $${totalEfectivo}*
+- ${servs}
 
 ✅ Seña pagada: $${señaFija}
 💵 Resto a pagar en el local:
-   • Efectivo: $${restoEfectivo} (10% descuento aplicado)
-   • Otros medios: $${resto}
+   • Efectivo: 10% descuento.
 
-Te enviaré un recordatorio el día anterior.
-
-¡Te esperamos! 😊✨`;
+¡Te espero! 😊✨`;
                 
                 const msgCodificado = encodeURIComponent(mensaje).replace(/%20/g, '+');
                 window.open(`https://api.whatsapp.com/send?phone=${tel}&text=${msgCodificado}`, '_blank');
