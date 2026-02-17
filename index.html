@@ -364,6 +364,9 @@ Te enviaré un recordatorio el día anterior.
                 const reservasEnEsteTurno = reservas.filter(r => {
                     if (r.estado === 'cancelada') return false;
                     if (r.sucursal.id !== sucursalId) return false;
+                    // Normalizar fecha por si viene en formato ISO completo
+                    const fechaR = r.fecha ? r.fecha.substring(0, 10) : '';
+                    if (fechaR !== fechaSeleccionada) return false;
                     return r.turnosBloqueados?.includes(turnoKey);
                 });
                 
@@ -699,14 +702,15 @@ Te enviaré un recordatorio el día anterior.
             const registrosFiltrados = useMemo(() => {
                 return registros.filter(r => {
                     if (!r || !r.fecha) return false;
-                    if (filtros.fechaInicio && r.fecha < filtros.fechaInicio) return false;
-                    if (filtros.fechaFin && r.fecha > filtros.fechaFin) return false;
+                    const fecha = r.fecha.substring(0, 10);
+                    if (filtros.fechaInicio && fecha < filtros.fechaInicio) return false;
+                    if (filtros.fechaFin && fecha > filtros.fechaFin) return false;
                     if (filtros.clienta && !r.clienta?.toLowerCase().includes(filtros.clienta.toLowerCase())) return false;
                     if (filtros.servicio && !r.servicios?.some(s => s?.toLowerCase().includes(filtros.servicio.toLowerCase()))) return false;
                     if (filtros.metodoPago && r.metodoPago !== filtros.metodoPago) return false;
                     if (filtros.sucursal && r.sucursal !== filtros.sucursal) return false;
                     return true;
-                }).sort((a,b) => b.fecha.localeCompare(a.fecha));
+                }).sort((a,b) => b.fecha.substring(0,10).localeCompare(a.fecha.substring(0,10)));
             }, [registros, filtros]);
 
             // Resetear página al filtrar
@@ -1393,8 +1397,8 @@ Te enviaré un recordatorio el día anterior.
                                 if (r.estado === 'cancelada') return false;
                                 if (r.sucursal.id !== sucursalId) return false;
                                 
-                                // Parsear fecha de reserva sin timezone (formato YYYY-MM-DD)
-                                const fechaReserva = r.fecha; // Ya está en formato YYYY-MM-DD
+                                // Normalizar fecha de reserva: tomar solo los primeros 10 caracteres (YYYY-MM-DD)
+                                const fechaReserva = r.fecha ? r.fecha.substring(0, 10) : '';
                                 if (fechaReserva !== fechaStr) return false;
                                 
                                 // Verificar si este turno está bloqueado
