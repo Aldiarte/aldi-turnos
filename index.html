@@ -54,9 +54,9 @@
     <!-- EmailJS SDK para envÃ­o de emails -->
     <script defer src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     
-    <!-- Optimizado: usar CDN mÃ¡s rÃ¡pido y defer -->
-    <script defer crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script defer crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- React 17 - compatible con ReactDOM.render -->
+    <script defer crossorigin src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+    <script defer crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
     <!-- SheetJS para importar/exportar Excel -->
     <script defer src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script defer src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -71,6 +71,17 @@
     </div>
     
     <div id="root"></div>
+    <!-- Capturar errores globales para debug -->
+    <script>
+        window.onerror = function(msg, src, line, col, err) {
+            var el = document.getElementById('loading');
+            if (el) {
+                el.innerHTML = '<div style="text-align:center;padding:30px;max-width:400px"><p style="font-size:20px;margin-bottom:12px">❌ Error al cargar</p><p style="font-size:13px;opacity:0.8;margin-bottom:8px;word-break:break-word">' + msg + '</p><p style="font-size:12px;opacity:0.6;margin-bottom:20px">Línea: ' + line + '</p><button onclick="window.location.reload()" style="background:white;color:#1E5AA8;border:none;padding:12px 24px;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer">🔄 Recargar</button></div>';
+            }
+            console.error('Error global:', msg, 'línea:', line);
+            return false;
+        };
+    </script>
     <script type="text/babel">
         // ConfiguraciÃ³n Firebase
         const firebaseConfig = {
@@ -1665,6 +1676,9 @@ Tu pago fue verificado y tu turno estÃ¡ *100% confirmado* ðŸ’–
                 if (el) el.classList.add('hidden');
             }, []);
             const [reservas, setReservas] = useState([]);
+            const reservasRef = useRef([]);
+            // Mantener ref actualizada para usar en efectos sin causar re-ejecución
+            useEffect(() => { reservasRef.current = reservas; }, [reservas]);
             const [servicios, setServicios] = useState(DEFAULT_SERVICIOS);
             const [seÃ±aFija, setSeÃ±aFija] = useState(2000);
             const [password, setPassword] = useState('admin123');
@@ -1775,7 +1789,7 @@ Tu pago fue verificado y tu turno estÃ¡ *100% confirmado* ðŸ’–
                         const hoyStr = hoy.toISOString().split('T')[0];
                         
                         // Filtrar reservas confirmadas cuya fecha ya pasÃ³ (hasta hoy inclusive)
-                        const reservasParaRegistrar = reservas.filter(r => {
+                        const reservasParaRegistrar = reservasRef.current.filter(r => {
                             if (r.estado !== 'confirmada' || r.esFicticia) return false;
                             
                             // Verificar que la fecha de la reserva sea hoy o anterior
@@ -1847,7 +1861,7 @@ Tu pago fue verificado y tu turno estÃ¡ *100% confirmado* ðŸ’–
                 const timerId = programarSincronizacion();
                 
                 return () => clearTimeout(timerId);
-            }, [reservas]);
+            }, []); // [] para ejecutar solo al montar, evitar loop infinito con Firebase listener
 
             const guardarReservas = async (r) => {
                 // Convertir array a objeto con IDs como keys
