@@ -48,19 +48,24 @@
         }
     </style>
     <!-- Firebase SDK -->
-    <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     
-    <!-- EmailJS SDK para envÃ­o de emails -->
-    <script defer src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
-    
-    <!-- React 17 - compatible con ReactDOM.render -->
-    <script defer crossorigin src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
-    <script defer crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
-    <!-- SheetJS para importar/exportar Excel -->
-    <script defer src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
-    <script defer src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script defer src="https://cdn.tailwindcss.com"></script>
+    <!-- EmailJS -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
+    <!-- React 17 via cdnjs (más confiable que unpkg) -->
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/17.0.2/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/17.0.2/umd/react-dom.production.min.js"></script>
+
+    <!-- SheetJS via cdnjs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- Babel standalone via cdnjs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.3/babel.min.js"></script>
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body>
     <!-- Loading screen -->
@@ -71,17 +76,6 @@
     </div>
     
     <div id="root"></div>
-    <!-- Capturar errores globales para debug -->
-    <script>
-        window.onerror = function(msg, src, line, col, err) {
-            var el = document.getElementById('loading');
-            if (el) {
-                el.innerHTML = '<div style="text-align:center;padding:30px;max-width:400px"><p style="font-size:20px;margin-bottom:12px">❌ Error al cargar</p><p style="font-size:13px;opacity:0.8;margin-bottom:8px;word-break:break-word">' + msg + '</p><p style="font-size:12px;opacity:0.6;margin-bottom:20px">Línea: ' + line + '</p><button onclick="window.location.reload()" style="background:white;color:#1E5AA8;border:none;padding:12px 24px;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer">🔄 Recargar</button></div>';
-            }
-            console.error('Error global:', msg, 'línea:', line);
-            return false;
-        };
-    </script>
     <script type="text/babel">
         // ConfiguraciÃ³n Firebase
         const firebaseConfig = {
@@ -151,13 +145,13 @@
 
         const { useState, useEffect, useRef, useMemo } = React;
 
-        // Fallback: si algo falla y React no monta, ocultar loading igual después de 8s
+        // Fallback: si algo falla y React no monta, ocultar loading igual después de 10s
         setTimeout(() => {
             const el = document.getElementById('loading');
             if (el && !el.classList.contains('hidden')) {
-                el.innerHTML = '<div style="text-align:center;padding:20px"><p style="font-size:18px;margin-bottom:16px">❌ Error al cargar la aplicación</p><p style="font-size:14px;opacity:0.8;margin-bottom:20px">Verificá tu conexión a internet y recargá la página</p><button onclick="window.location.reload()" style="background:white;color:#1E5AA8;border:none;padding:12px 24px;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer">🔄 Recargar</button></div>';
+                el.innerHTML = '<div style="text-align:center;padding:20px"><p style="font-size:18px;margin-bottom:16px">⏱ La carga está tardando más de lo normal</p><p style="font-size:14px;opacity:0.8;margin-bottom:20px">Verificá tu conexión a internet</p><button onclick="window.location.reload()" style="background:white;color:#1E5AA8;border:none;padding:12px 24px;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer">🔄 Recargar</button></div>';
             }
-        }, 8000);
+        }, 10000);
 
         // ConfiguraciÃ³n por defecto
         const SUCURSALES = [
